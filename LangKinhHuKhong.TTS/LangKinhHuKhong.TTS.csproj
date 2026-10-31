@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>LangKinhHuKhong.TTS</AssemblyName>
+    <RootNamespace>LangKinhHuKhong.TTS</RootNamespace>
+    <Product>LangKinhHuKhong.TTS</Product>
+    <Version>1.1.0</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Assets\logo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\logo-sidebar.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Runtime\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Runtime')" />
+    <Content Include="Voices\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Voices')" />
+  </ItemGroup>
+</Project>

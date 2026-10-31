@@ -1,9 +1,10 @@
-
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LangKinhHuKhong.TTS", "LangKinhHuKhong.TTS.csproj", "{20B35644-CC2C-CBEE-E921-051BE6B81CB8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LangKinhHuKhong.TTS", "LangKinhHuKhong.TTS\LangKinhHuKhong.TTS.csproj", "{265125D5-26AD-4BA0-B752-B39AAB43E0F4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TextProcessing.SmokeTests", "Tests\TextProcessing.SmokeTests.csproj", "{42FCF809-997B-476E-ACFA-2826D05AED0F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +12,13 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{20B35644-CC2C-CBEE-E921-051BE6B81CB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{20B35644-CC2C-CBEE-E921-051BE6B81CB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{20B35644-CC2C-CBEE-E921-051BE6B81CB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{20B35644-CC2C-CBEE-E921-051BE6B81CB8}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {E1111673-2E89-421A-8A35-F1567952131F}
+		{265125D5-26AD-4BA0-B752-B39AAB43E0F4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{265125D5-26AD-4BA0-B752-B39AAB43E0F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{265125D5-26AD-4BA0-B752-B39AAB43E0F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{265125D5-26AD-4BA0-B752-B39AAB43E0F4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{42FCF809-997B-476E-ACFA-2826D05AED0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42FCF809-997B-476E-ACFA-2826D05AED0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{42FCF809-997B-476E-ACFA-2826D05AED0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{42FCF809-997B-476E-ACFA-2826D05AED0F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

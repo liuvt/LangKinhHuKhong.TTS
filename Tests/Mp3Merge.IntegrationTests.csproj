@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Mp3Merge.IntegrationTests.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/Mp3StreamCopy.cs" Link="Mp3StreamCopy.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/SrtAudioMerger.cs" Link="SrtAudioMerger.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/SubtitleSrt.cs" Link="SubtitleSrt.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/SpeechPacing.cs" Link="SpeechPacing.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/SubtitleSrt.cs" Link="SubtitleSrt.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/TtsSubtitleTimeline.cs" Link="TtsSubtitleTimeline.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/SubtitleChunking.cs" Link="SubtitleChunking.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/SrtAudioMerger.cs" Link="SrtAudioMerger.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/Mp3StreamCopy.cs" Link="Mp3StreamCopy.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/WavPacing.cs" Link="WavPacing.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/TextProcessor.cs" Link="TextProcessor.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/VoiceLanguage.cs" Link="VoiceLanguage.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/VoiceCatalog.cs" Link="VoiceCatalog.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Models/AppModels.cs" Link="AppModels.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/StreamingPcmEncoder.cs" Link="StreamingPcmEncoder.cs" />
+  </ItemGroup>
+</Project>

@@ -5,17 +5,23 @@ obj/
 .idea/
 *.user
 *.suo
-# Generated media
-Temp/**
-!Temp/.gitkeep
-Output/**
-!Output/.gitkeep
+
+# Build output & generated media
+Publish/
+Output/
+Temp/
+LangKinhHuKhong.TTS/Publish/
+LangKinhHuKhong.TTS/Output/
+
 # Voice weights & runtime binaries (managed separately)
+Runtime/
+Voices/
+LangKinhHuKhong.TTS/Runtime/
+LangKinhHuKhong.TTS/Voices/
 Voices/**/*.onnx
 Voices/**/*.onnx.json
 Voices/**/*.json
-Runtime/
+
 # Operating system
 .DS_Store
 Thumbs.db
-/Publish
