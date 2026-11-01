@@ -1,11 +1,13 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace LangKinhHuKhong.TTS.Core;
 
 /// <summary>
 /// Safe natural-sentence chunking for offline voices.
 /// Commas and colons STAY IN a full sentence to avoid model losing Vietnamese syllable context.
-/// WAV silence is inserted only after completed sentences and line breaks.
+/// WAV silence is inserted only after completed sentences, line breaks, or explicit [pause:...] / [nghi:...] text commands.
 /// Long sentences get a limited soft split (never every comma).
 /// </summary>
 public static class SpeechPacing
@@ -21,6 +23,14 @@ public static class SpeechPacing
     public const int ParagraphPauseMs = 550;
     public const int SoftPauseMs = 100;
     public const int MaxPhraseLength = 240;
+
+    private static readonly Regex InlinePauseCommand = new(
+        @"^\[(?:pause|nghi|break|silence|im)\s*:\s*(?<val>\d+(?:[.,]\d+)?)\s*(?<unit>ms|s)?\s*\]",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex InlineNoteCommand = new(
+        @"^(?:\[\[[^\]]*\]\]|\[(?:note|ghichu|comment)\s*:[^\]]*\])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public sealed record Segment(string Text, int PauseAfterMs);
 
@@ -50,6 +60,33 @@ public static class SpeechPacing
                 Flush(consecutiveBreaks > 1 ? ParagraphPauseMs : LinePauseMs);
                 continue;
             }
+
+            // Handle inline studio text commands: [pause:500ms], [nghi:1.5s], [break:1000ms], [[ghi chú]]
+            if (c == '[')
+            {
+                var remainingSpan = input[i..];
+                var noteMatch = InlineNoteCommand.Match(remainingSpan);
+                if (noteMatch.Success)
+                {
+                    i += noteMatch.Length - 1;
+                    continue;
+                }
+                var pauseMatch = InlinePauseCommand.Match(remainingSpan);
+                if (pauseMatch.Success)
+                {
+                    var rawVal = pauseMatch.Groups["val"].Value.Replace(',', '.');
+                    var unit = pauseMatch.Groups["unit"].Value.ToLowerInvariant();
+                    if (double.TryParse(rawVal, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+                    {
+                        var ms = unit == "s" ? (int)Math.Round(number * 1000) : (int)Math.Round(number);
+                        ms = Math.Clamp(ms, 50, 10_000);
+                        Flush(ms);
+                        i += pauseMatch.Length - 1;
+                        continue;
+                    }
+                }
+            }
+
             if (!char.IsWhiteSpace(c)) consecutiveBreaks = 0;
             segment.Append(c);
 

@@ -85,6 +85,8 @@ try
         "Missing metadata labeled unknown, not Vietnamese");
     Check(VoiceLanguage.Choices(found).Any(v => v.Code == "en-GB" && v.Count == 1),
         "Dropdown includes installed locale not in common presets");
+    Check(VoiceLanguage.Choices(found).All(v => v.Code == VoiceLanguage.All || v.Count > 0),
+        "Dropdown hides languages that have 0 installed voices");
 }
 finally { Directory.Delete(voiceTmp, recursive: true); }
 Check(SpeechPacing.SegmentText("你好。欢迎！").Count == 2, "Chinese punctuation segments");
@@ -158,3 +160,44 @@ var longHours = TtsSubtitleTimeline.FromMeasured([
 ], 22050, 160);
 Check(longHours.Count > 0 && longHours[^1].End.TotalHours > 54,
     "SRT xử lý hơn 55 giờ mà không cần WAV RIFF 4 GB");
+
+// v1.2: ElevenLabs Studio upgrades - Word-limited review snippet & Voice file rename/example sync
+var reviewSource = "Một hai ba bốn năm sáu, bảy tám chín mười. Mười một mười hai mười ba.";
+var (snippetText, wordCount, truncated) = TextProcessor.ExtractReviewSnippet(reviewSource, 6);
+Check(truncated && wordCount == 6 && snippetText.StartsWith("Một hai ba bốn năm sáu", StringComparison.Ordinal),
+    "Review giới hạn từ cắt đúng số từ và chuẩn hóa dấu câu");
+
+var renameTmp = Path.Combine(Path.GetTempPath(), "LKH-VoiceRename-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(renameTmp);
+try
+{
+    var oldOnnx = Path.Combine(renameTmp, "raw_model_x.onnx");
+    File.WriteAllText(oldOnnx, "fake-onnx");
+    File.WriteAllText(oldOnnx + ".json", "{\"audio\":{\"quality\":\"high\"}}");
+    var exampleDir = Path.Combine(renameTmp, "example");
+    Directory.CreateDirectory(exampleDir);
+    File.WriteAllBytes(Path.Combine(exampleDir, "raw_model_x.mp3"), new byte[1024]);
+
+    var scanned = VoiceCatalog.Scan(renameTmp);
+    Check(scanned.Count == 1, "Quét model trước khi đổi tên");
+    var newModelPath = VoiceCatalog.RenameAndUpdateVoice(
+        scanned[0], "vi-VN_nu_ngochuyen-high", "Ngọc Huyền Studio", "Nữ", "vi-VN", renameTmp);
+    Check(File.Exists(newModelPath) && File.Exists(newModelPath + ".json"), "Đổi tên cặp file .onnx + .onnx.json");
+    var rescanned = VoiceCatalog.Scan(renameTmp);
+    Check(rescanned.Count == 1 &&
+          rescanned[0].Name == "Ngọc Huyền Studio" &&
+          rescanned[0].Category == "Nữ" &&
+          rescanned[0].Language == "vi-VN" &&
+          VoiceCatalog.HasExampleAudio(renameTmp, rescanned[0]),
+          "Lưu metadata display_name/category/language và đồng bộ file mẫu trong Voices/example");
+}
+finally { Directory.Delete(renameTmp, recursive: true); }
+
+// Inline text commands: [pause:...], [nghi:...], [[note]], // line comments
+var cmdNormalized = TextProcessor.NormalizeForTts("// Dòng comment\n[[Ghi chú ẩn]] Câu một. [pause:750ms]\nCâu hai [nghi:1.2s] Câu ba");
+var cmdSegments = SpeechPacing.SegmentText(cmdNormalized);
+Check(cmdSegments.Count == 3 &&
+      cmdSegments[0].Text == "Câu một." && cmdSegments[0].PauseAfterMs == 750 &&
+      cmdSegments[1].Text == "Câu hai" && cmdSegments[1].PauseAfterMs == 1200 &&
+      cmdSegments[2].Text == "Câu ba.",
+      "Câu lệnh text [pause:750ms], [nghi:1.2s], [[Ghi chú]] và // comment hoạt động chuẩn xác");

@@ -8,18 +8,55 @@ public static class TextProcessor
     // No application-defined maximum character count. The editor and runtime are resource-bound.
     private static readonly Regex ClosingQuotes = new(@"[”’""')\]]+$", RegexOptions.Compiled);
     private static readonly Regex WordRegex = new(@"[\p{L}\p{M}\p{N}]+(?:['’\-][\p{L}\p{M}\p{N}]+)*", RegexOptions.Compiled);
+    private static readonly Regex InlineNotes = new(@"\[\[[^\]]*\]\]|\[(?:note|ghichu|comment)\s*:[^\]]*\]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TrailingPauseTag = new(@"\[(?:pause|nghi|break|silence|im)\s*:\s*\d+(?:[.,]\d+)?\s*(?:ms|s)?\s*\]\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static int CountWords(string? text) => string.IsNullOrEmpty(text) ? 0 : WordRegex.Matches(text).Count;
 
-    // Không xóa đoạn, không thay đổi nội dung gốc ngoài dấu câu cuối dòng.
+    /// <summary>
+    /// Extracts up to <paramref name="maxWords"/> words from the input text for quick studio audio review,
+    /// preserving punctuation and natural spacing.
+    /// </summary>
+    public static (string Text, int WordCount, bool Truncated) ExtractReviewSnippet(string? input, int maxWords)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return (string.Empty, 0, false);
+        maxWords = Math.Clamp(maxWords, 5, 2000);
+        var trimmed = input.Trim();
+        var matches = WordRegex.Matches(trimmed);
+        if (matches.Count == 0) return (string.Empty, 0, false);
+        if (matches.Count <= maxWords)
+            return (NormalizeForTts(trimmed), matches.Count, false);
+
+        var lastMatch = matches[maxWords - 1];
+        var endIndex = lastMatch.Index + lastMatch.Length;
+        while (endIndex < trimmed.Length && !char.IsWhiteSpace(trimmed[endIndex]) &&
+               ".!?…;:,。！？；：，、”’\"')]".Contains(trimmed[endIndex]))
+        {
+            endIndex++;
+        }
+        var slice = trimmed[..endIndex].Trim();
+        return (NormalizeForTts(slice), maxWords, true);
+    }
+
+    // Không xóa đoạn, không thay đổi nội dung gốc ngoài dấu câu cuối dòng và lọc ghi chú kịch bản.
     public static string NormalizeForTts(string? input)
     {
         if (string.IsNullOrEmpty(input)) return string.Empty;
         var lines = input.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
-            var line = lines[i].TrimEnd();
+            var line = InlineNotes.Replace(lines[i], "").TrimEnd();
+            if (line.TrimStart().StartsWith("//", StringComparison.Ordinal))
+            {
+                lines[i] = "";
+                continue;
+            }
             if (string.IsNullOrWhiteSpace(line)) { lines[i] = ""; continue; }
+            if (TrailingPauseTag.IsMatch(line))
+            {
+                lines[i] = line;
+                continue;
+            }
             var closers = ClosingQuotes.Match(line);
             var index = closers.Success ? closers.Index - 1 : line.Length - 1;
             if (index >= 0 && !".!?…;:,。！？；：，、؟۔،".Contains(line[index]))

@@ -18,7 +18,7 @@ public sealed partial class MainForm : Form
     private bool _busy;
     private bool _isSeeking;
     private bool _suppressMergeRefresh;
-    private readonly System.Windows.Forms.Timer _wordTimer = new() { Interval = 450 };
+    private readonly System.Windows.Forms.Timer _wordTimer = new() { Interval = 350 };
     private bool _closing;
     private string _activePage = "editor";
 
@@ -35,11 +35,17 @@ public sealed partial class MainForm : Form
     private Label _textWarning = null!;
     private RichTextBox _editor = null!;
     private ModernButton _renderButton = null!;
+    private ModernButton _reviewButton = null!;
+    private ModernButton _reviewToolbarButton = null!;
+    private ComboBox _reviewLimitCombo = null!;
     private ModernButton _cancelButton = null!;
     private ModernButton _mergeButton = null!;
     private ComboBox _voiceCombo = null!;
     private ComboBox _groupCombo = null!;
     private ComboBox _languageCombo = null!;
+    private TextBox _voiceSearchBox = null!;
+    private ModernButton _previewVoiceButton = null!;
+    private ModernButton _renameVoiceQuickButton = null!;
     private Label _voiceLanguageHint = null!;
     private bool _loadingVoices;
     private ComboBox _speakerCombo = null!;
@@ -49,7 +55,19 @@ public sealed partial class MainForm : Form
     private ComboBox _mergeSpeedCombo = null!;
     private ModernProgressBar _progress = null!;
     private ModernProgressBar _mergeProgress = null!;
+    private ModernProgressBar _voiceLabProgress = null!;
     private Label _renderStatus = null!;
+
+    // Voice Lab (ElevenLabs style catalog & sample studio)
+    private ListView _voiceCatalogList = null!;
+    private TextBox _voiceLabSearch = null!;
+    private ComboBox _voiceLabCategory = null!;
+    private ComboBox _voiceLabLanguage = null!;
+    private TextBox _sampleTextBox = null!;
+    private Label _voiceLabSummary = null!;
+    private ModernButton _renderAllExamplesButton = null!;
+
+    // Library & Merge controls
     private ListView _library = null!;
     private TextBox _searchLibrary = null!;
     private ListView _mergeList = null!;
@@ -68,11 +86,11 @@ public sealed partial class MainForm : Form
     {
         _audio = new AudioPipeline(_paths, _storage);
         _jobs = new JobManager(_storage, _paths, _audio);
-        Text = "LangKinhHuKhong.TTS | v1.1 | Persistent Piper + MP3 + SRT";
+        Text = "LangKinhHuKhong.TTS Studio | v1.2 | ElevenLabs-Style Local Workstation";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1100, 730);
-        Size = new Size(1500, 925);
+        MinimumSize = new Size(1160, 760);
+        Size = new Size(1540, 940);
         BackColor = Theme.Background;
         ForeColor = Theme.Text;
         Font = Theme.Body;
@@ -85,7 +103,11 @@ public sealed partial class MainForm : Form
         {
             _wordTimer.Stop();
             if (!_closing && !_editor.IsDisposed)
-                _wordCount.Text = $"{TextProcessor.CountWords(_editor.Text):N0} từ · {_editor.TextLength:N0} ký tự";
+            {
+                var words = TextProcessor.CountWords(_editor.Text);
+                var estMinutes = Math.Max(0.1, words / 150.0);
+                _wordCount.Text = $"{words:N0} từ · {_editor.TextLength:N0} ký tự · Ước tính đọc ~{estMinutes:0.#} phút";
+            }
         };
         _playTimer.Start();
         RefreshLibrary();
@@ -99,9 +121,13 @@ public sealed partial class MainForm : Form
     {
         if (e.Control && e.KeyCode == Keys.O) { ImportText(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.Enter) { _ = StartRenderAsync(); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.P) { _ = StartReviewSnippetAsync(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.D1) { ShowPage("editor"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D2) { ShowPage("library"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D3) { ShowPage("merge"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D2) { ShowPage("voices"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D3) { ShowPage("library"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D4) { ShowPage("merge"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D5) { ShowPage("settings"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D6) { ShowPage("guide"); e.SuppressKeyPress = true; }
     }
 
     private void OnClosing(object? sender, FormClosingEventArgs e)
@@ -111,7 +137,6 @@ public sealed partial class MainForm : Form
         _playTimer.Stop();
         _wordTimer.Stop();
         _player.Dispose();
-        // Không tự xóa MP3 khi đóng app desktop: thư viện bền vững, xóa theo thao tác của người dùng.
     }
 
     private void SafeUi(Action work)
@@ -128,27 +153,6 @@ public sealed partial class MainForm : Form
     private static ModernButton Btn(string text, ModernButton.Kind style = ModernButton.Kind.Secondary, int width = 112)
         => new() { Text = text, Style = style, Width = width };
 
-    private static Panel StackVertical(int padding = 0) => new()
-    {
-        Dock = DockStyle.Fill, BackColor = Color.Transparent, Padding = new Padding(padding)
-    };
-
-    private static void AddTop(Control host, Control control, int height, int topGap = 0)
-    {
-        // Dock Top xếp ngược theo thứ tự Controls: dùng Controls.Add luôn ở cuối.
-        control.Dock = DockStyle.Top;
-        control.Height = height;
-        control.Margin = Padding.Empty;
-        if (topGap != 0)
-        {
-            var space = new Panel { Dock = DockStyle.Top, Height = topGap, BackColor = Color.Transparent };
-            host.Controls.Add(space);
-            space.BringToFront();
-        }
-        host.Controls.Add(control);
-        control.BringToFront();
-    }
-
     private void SetStatus(string message, Color? color = null)
     {
         SafeUi(() => { _footerStatus.Text = message; _footerStatus.ForeColor = color ?? Theme.Muted; });
@@ -156,7 +160,7 @@ public sealed partial class MainForm : Form
 
     private static void ShowError(Exception error, string context)
     {
-        MessageBox.Show($"{context}\n\n{error.Message}", "Lăng Kính Hư Không",
+        MessageBox.Show($"{context}\n\n{error.Message}", "LangKinhHuKhong Studio",
             MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 }

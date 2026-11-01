@@ -9,7 +9,9 @@ public sealed record VoiceModel(
     string Name, string ModelPath, string ConfigPath, string Language,
     string Quality, int NumSpeakers, IReadOnlyList<VoiceSpeaker> Speakers, string Category)
 {
-    public override string ToString() => Name;
+    public string FileName => Path.GetFileName(ModelPath);
+    public string SafeKey => Path.GetFileNameWithoutExtension(ModelPath);
+    public override string ToString() => $"{Name}  ·  {Category}  ·  {Language}";
 }
 
 public sealed class AudioEntry
@@ -30,12 +32,15 @@ public sealed class AudioEntry
 
 public sealed class DesktopSettings
 {
-    public string OutputFolder { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "LangKinhHuKhong", "MP3");
+    public string OutputFolder { get; set; } = Path.Combine(AppContext.BaseDirectory, "Output");
     public string VoicesFolder { get; set; } = Path.Combine(AppContext.BaseDirectory, "Voices");
     public string RuntimeFolder { get; set; } = Path.Combine(AppContext.BaseDirectory, "Runtime");
+    public string LastBaseDirectory { get; set; } = "";
     public double Speed { get; set; } = 1;
     public string LastVoicePath { get; set; } = "";
     public string LastCategory { get; set; } = "Tất cả";
-    public string LastLanguage { get; set; } = "vi-VN";
+    public string LastLanguage { get; set; } = "*";
+    public int ReviewWordLimit { get; set; } = 50;
+    public string SampleText { get; set; } =
+        "Xin chào, đây là giọng đọc mẫu của Lăng Kính Hư Không Studio. Âm thanh rõ nét, nhịp nghỉ tự nhiên, tối ưu cho sách nói và truyện dài.";
 }

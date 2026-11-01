@@ -73,19 +73,31 @@ public static class VoiceLanguage
     ["vi-VN", "en-US", "en-GB", "zh-CN", "ja-JP", "ko-KR", "th-TH",
      "fr-FR", "de-DE", "es-ES", "ru-RU", "id-ID", "pt-BR"];
 
+    /// <summary>
+    /// Only returns languages that actually have at least 1 installed voice model (plus "All").
+    /// Empty languages with 0 voices are hidden to keep the UI clean.
+    /// </summary>
     public static IReadOnlyList<LanguageChoice> Choices(IEnumerable<VoiceModel> installed)
     {
         var counts = installed.GroupBy(v => Normalize(v.Language))
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
-        var options = new List<LanguageChoice> { new(All, "Tất cả ngôn ngữ", counts.Values.Sum()) };
+        var total = counts.Values.Sum();
+        var options = new List<LanguageChoice> { new(All, $"Tất cả ngôn ngữ ({total})", total) };
+
+        // Preserve preferred order from CommonLanguages first, then any additional installed locales,
+        // but ONLY include languages where count > 0.
         foreach (var code in CommonLanguages.Concat(counts.Keys.Where(c => c != Unknown))
                      .Select(Normalize).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var count = counts.GetValueOrDefault(code);
-            options.Add(new LanguageChoice(code, $"{DisplayName(code)}  ·  {count} giọng", count));
+            if (counts.TryGetValue(code, out var count) && count > 0)
+            {
+                options.Add(new LanguageChoice(code, $"{DisplayName(code)}  ·  {count} giọng", count));
+            }
         }
-        if (counts.TryGetValue(Unknown, out var unknownCount))
+        if (counts.TryGetValue(Unknown, out var unknownCount) && unknownCount > 0)
+        {
             options.Add(new LanguageChoice(Unknown, $"{DisplayName(Unknown)}  ·  {unknownCount} giọng", unknownCount));
+        }
         return options;
     }
 

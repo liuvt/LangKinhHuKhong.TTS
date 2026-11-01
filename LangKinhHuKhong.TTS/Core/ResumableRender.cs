@@ -6,7 +6,8 @@ using LangKinhHuKhong.TTS.Models;
 namespace LangKinhHuKhong.TTS.Core;
 
 /// <summary>
-/// Creates completed, durable MP3/SRT batches. On restart/cancellation, completed batches are reused.
+/// Creates completed, durable MP3/SRT batches. On restart/cancellation or partial manuscript edits,
+/// completed batches are reused via content-addressable batch hashing (ElevenLabs Studio style).
 /// Keeps only one Piper model loaded. No per-sentence process launch and no 4GiB WAV.
 /// </summary>
 public static class ResumableRender
@@ -26,11 +27,12 @@ public static class ResumableRender
         if (chunks.Count == 0) throw new InvalidOperationException("Nội dung không có câu hợp lệ để tạo giọng.");
         var modelInfo = new FileInfo(voice.ModelPath);
         var cfgInfo = new FileInfo(voice.ConfigPath);
+        var voicePrefix = $"v1.2|{voice.ModelPath}|{modelInfo.Length}|{modelInfo.LastWriteTimeUtc.Ticks}|" +
+            $"{cfgInfo.Length}|{cfgInfo.LastWriteTimeUtc.Ticks}|{speakerId}|{createSrt}|{useCuda}|";
+
         // Incremental hash: avoid allocating another giant copy of the source manuscript.
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var metadata = $"v1.1|{voice.ModelPath}|{modelInfo.Length}|{modelInfo.LastWriteTimeUtc.Ticks}|" +
-            $"{cfgInfo.Length}|{cfgInfo.LastWriteTimeUtc.Ticks}|{speakerId}|{speed}|{createSrt}|{useCuda}|";
-        hash.AppendData(Encoding.UTF8.GetBytes(metadata));
+        hash.AppendData(Encoding.UTF8.GetBytes(voicePrefix + $"{speed}|"));
         for (int pos = 0; pos < normalized.Length;)
         {
             var count = Math.Min(16_384, normalized.Length - pos);
@@ -54,19 +56,21 @@ public static class ResumableRender
                 ct.ThrowIfCancellationRequested();
                 var from = batchIndex * BatchSize;
                 var length = Math.Min(BatchSize, total - from);
+                var batchKey = ComputeBatchKey(voicePrefix, chunks, from, length);
                 var prefix = Path.Combine(folder, $"batch-{batchIndex:D6}");
                 var mp3 = prefix + ".mp3";
                 var srt = prefix + ".srt";
                 var meta = prefix + ".done.json";
                 BatchState? state = null;
-                if (File.Exists(meta) && File.Exists(mp3) && new FileInfo(mp3).Length > 1000 &&
+                if (File.Exists(meta) && File.Exists(mp3) && new FileInfo(mp3).Length > 500 &&
                     (!createSrt || File.Exists(srt)))
                 {
                     try
                     {
                         var candidate = JsonSerializer.Deserialize<BatchState>(await File.ReadAllTextAsync(meta, ct));
-                        if (candidate is not null && candidate.Key == key && candidate.Index == batchIndex &&
-                            candidate.Count == length && candidate.DurationTicks > 0 && candidate.SampleRate > 0)
+                        if (candidate is not null && (candidate.Key == batchKey || candidate.Key == key) &&
+                            candidate.Index == batchIndex && candidate.Count == length &&
+                            candidate.DurationTicks > 0 && candidate.SampleRate > 0)
                             state = candidate;
                     }
                     catch (JsonException) { }
@@ -109,7 +113,7 @@ public static class ResumableRender
                             var synced = SubtitleSrt.RescaleTimeline(cues, encoder.Duration, duration);
                             await SubtitleSrt.SaveAsync(srt, synced, ct);
                         }
-                        state = new BatchState(key, batchIndex, length, duration.Ticks, encoder.SampleRate);
+                        state = new BatchState(batchKey, batchIndex, length, duration.Ticks, encoder.SampleRate);
                         var tmp = meta + ".tmp";
                         await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(state), ct);
                         File.Move(tmp, meta, overwrite: true); // Commit last after MP3 + SRT both succeeded.
@@ -153,5 +157,17 @@ public static class ResumableRender
         }
         progress?.Report((total + 1, total + 1));
         return new RenderResult(finished, createSrt ? finalSrt : null, folder);
+    }
+
+    private static string ComputeBatchKey(string voicePrefix, IReadOnlyList<SpeechPacing.Segment> chunks, int from, int length)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(Encoding.UTF8.GetBytes(voicePrefix));
+        for (int i = 0; i < length; i++)
+        {
+            var seg = chunks[from + i];
+            hash.AppendData(Encoding.UTF8.GetBytes($"{seg.PauseAfterMs}:{seg.Text}\n"));
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
     }
 }

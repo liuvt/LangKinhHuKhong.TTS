@@ -16,12 +16,98 @@ public sealed class Storage
     public string DataFolder => _root;
     public DesktopSettings Settings { get; private set; } = new();
 
+    public static string DefaultOutputFolder => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Output"));
+    public static string DefaultVoicesFolder => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Voices"));
+    public static string DefaultRuntimeFolder => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Runtime"));
+
     public Storage()
     {
         Directory.CreateDirectory(_root);
+        EnsureSiblingWorkspaceFolders();
         Settings = Read<DesktopSettings>("settings.json") ?? new DesktopSettings();
+        NormalizeAppFolders();
         _history.AddRange(Read<List<AudioEntry>>("history.json") ?? []);
-        Directory.CreateDirectory(Settings.OutputFolder);
+        EnsureActiveFolders();
+    }
+
+    public static void EnsureSiblingWorkspaceFolders()
+    {
+        try
+        {
+            Directory.CreateDirectory(DefaultOutputFolder);
+            Directory.CreateDirectory(DefaultVoicesFolder);
+            Directory.CreateDirectory(Path.Combine(DefaultVoicesFolder, "example"));
+            Directory.CreateDirectory(DefaultRuntimeFolder);
+            Directory.CreateDirectory(Path.Combine(DefaultRuntimeFolder, "piper"));
+            Directory.CreateDirectory(Path.Combine(DefaultRuntimeFolder, "ffmpeg"));
+        }
+        catch (Exception) { /* Ignore if running from read-only media */ }
+    }
+
+    public void EnsureActiveFolders()
+    {
+        try
+        {
+            Directory.CreateDirectory(Settings.OutputFolder);
+            Directory.CreateDirectory(Settings.VoicesFolder);
+            Directory.CreateDirectory(Path.Combine(Settings.VoicesFolder, "example"));
+            Directory.CreateDirectory(Settings.RuntimeFolder);
+            Directory.CreateDirectory(Path.Combine(Settings.RuntimeFolder, "piper"));
+            Directory.CreateDirectory(Path.Combine(Settings.RuntimeFolder, "ffmpeg"));
+        }
+        catch (Exception) { }
+    }
+
+    public string ExampleVoicesFolder
+    {
+        get
+        {
+            var dir = Path.Combine(Settings.VoicesFolder, "example");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+    }
+
+    public void BindDefaultAppFolders()
+    {
+        EnsureSiblingWorkspaceFolders();
+        Settings.OutputFolder = DefaultOutputFolder;
+        Settings.VoicesFolder = DefaultVoicesFolder;
+        Settings.RuntimeFolder = DefaultRuntimeFolder;
+        Settings.LastBaseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+        SaveSettings();
+        EnsureActiveFolders();
+    }
+
+    private void NormalizeAppFolders()
+    {
+        var currentBase = Path.GetFullPath(AppContext.BaseDirectory);
+        var legacyDocsOutput = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "LangKinhHuKhong", "MP3");
+        bool baseChanged = !string.Equals(Settings.LastBaseDirectory, currentBase, StringComparison.OrdinalIgnoreCase);
+
+        if (baseChanged || string.IsNullOrWhiteSpace(Settings.OutputFolder) ||
+            string.Equals(Path.GetFullPath(Settings.OutputFolder), Path.GetFullPath(legacyDocsOutput), StringComparison.OrdinalIgnoreCase) ||
+            !Directory.Exists(Settings.OutputFolder))
+        {
+            Settings.OutputFolder = DefaultOutputFolder;
+        }
+        if (baseChanged || string.IsNullOrWhiteSpace(Settings.VoicesFolder) || !Directory.Exists(Settings.VoicesFolder))
+        {
+            Settings.VoicesFolder = DefaultVoicesFolder;
+        }
+        if (baseChanged || string.IsNullOrWhiteSpace(Settings.RuntimeFolder) || !Directory.Exists(Settings.RuntimeFolder))
+        {
+            Settings.RuntimeFolder = DefaultRuntimeFolder;
+        }
+        if (Settings.ReviewWordLimit <= 0) Settings.ReviewWordLimit = 50;
+        if (string.IsNullOrWhiteSpace(Settings.SampleText))
+        {
+            Settings.SampleText =
+                "Xin chào, đây là giọng đọc mẫu của Lăng Kính Hư Không Studio. Âm thanh rõ nét, nhịp nghỉ tự nhiên, tối ưu cho sách nói và truyện dài.";
+        }
+        Settings.LastBaseDirectory = currentBase;
+        SaveSettings();
     }
 
     private T? Read<T>(string name)
@@ -122,6 +208,7 @@ public sealed class Storage
     {
         var name = (input ?? "").Trim();
         if (name.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
+        if (name.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase)) name = name[..^5];
         foreach (var ch in Path.GetInvalidFileNameChars()) name = name.Replace(ch, '-');
         name = string.Concat(name.Where(c => !char.IsControl(c))).Trim().Trim('.');
         if (string.IsNullOrWhiteSpace(name)) return "LangKinhHuKhong-Audio";
