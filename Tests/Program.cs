@@ -201,3 +201,11 @@ Check(cmdSegments.Count == 3 &&
       cmdSegments[1].Text == "Câu hai" && cmdSegments[1].PauseAfterMs == 1200 &&
       cmdSegments[2].Text == "Câu ba.",
       "Câu lệnh text [pause:750ms], [nghi:1.2s], [[Ghi chú]] và // comment hoạt động chuẩn xác");
+
+var ellipsisSentence = "Cũng đừng mãi tự hỏi rằng, giá như lúc đầu thế này... thì tốt biết mấy...";
+var ellipsisSegments = SpeechPacing.SegmentText(TextProcessor.NormalizeForTts(ellipsisSentence));
+Check(ellipsisSegments.Count == 1 &&
+      ellipsisSegments[0].Text == "Cũng đừng mãi tự hỏi rằng, giá như lúc đầu thế này, thì tốt biết mấy..." &&
+      SpeechPacing.PrepareTextForPiper(ellipsisSegments[0].Text) == "Cũng đừng mãi tự hỏi rằng, giá như lúc đầu thế này, thì tốt biết mấy.",
+      "Dấu ba chấm giữa câu trước chữ thường ('... thì') tự chuyển thành dấu phẩy để Piper không nuốt chữ 'thì'");
+

@@ -250,7 +250,8 @@ public sealed partial class MainForm
                 item.SubItems.Add(voice.Category);
                 item.SubItems.Add(VoiceLanguage.DisplayName(voice.Language));
                 item.SubItems.Add(voice.Quality);
-                item.SubItems.Add(voice.NumSpeakers.ToString(CultureInfo.InvariantCulture));
+                int displaySpeakers = voice.Speakers.Count > 0 ? voice.Speakers.Count : voice.NumSpeakers;
+                item.SubItems.Add(displaySpeakers.ToString(CultureInfo.InvariantCulture));
                 item.SubItems.Add(hasExample ? "✓ Sẵn sàng (▶ Nghe)" : "○ Chưa tạo mẫu");
                 item.SubItems.Add(voice.FileName);
                 _voiceCatalogList.Items.Add(item);

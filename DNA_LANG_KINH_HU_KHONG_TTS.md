@@ -131,8 +131,9 @@ Mô hình VITS đặt lực nhấn mạnh nhất vào từ đứng ngay sau kho�
   - Kết hợp từ để hỏi (`sao`, `ư`, `à`, `hả`, `chăng`) + dấu `?` hoặc `?!`.
   - *Ví dụ*: `Ngươi thật sự dám bước vào cánh cổng đó sao?` / `Chuyện này là thật ư?!`
 - **Xuống giọng trầm, lắng đọng (buồn, suy tư, huyền bí)**:
-  - Kết thúc câu bằng dấu ba chấm `...` (hoặc `…`), theo sau là `[pause:600ms]` – `[pause:1s]`.
-  - *Ví dụ*: `Rồi tất cả... cũng chỉ còn lại hư không... [pause:800ms]`
+  - Kết thúc câu bằng dấu ba chấm `...` (hoặc `…`), theo sau là `[pause:600ms]` – `[pause:1s]` và **viết hoa chữ cái đầu của câu tiếp theo**.
+  - **Lưu ý quan trọng**: Không đặt `...` hay `[pause:...]` ngay trước các hư từ viết thường (`thì`, `là`, `mà`, `nhưng`, `như`, `lúc`) ở giữa câu; hãy dùng dấu phẩy `,` ở giữa câu (VD: `giá như lúc đầu thế này, thì tốt biết mấy...`) để `eSpeak-ng` không gán trọng âm phụ làm nuốt chữ `"thì"`.
+  - *Ví dụ*: `Rồi tất cả, cũng chỉ còn lại hư không... [pause:800ms]`
 - **Tương phản Lên giọng rồi Hạ giọng ngay câu sau**:
   - *Ví dụ*: `Ngươi nghĩ ta sợ ngươi sao? [pause:450ms] Không... ta chỉ thấy tiếc cho ngươi thôi...`
 
@@ -218,3 +219,14 @@ Bạn có thể đính kèm file **`DNA_LANG_KINH_HU_KHONG_TTS.md`** này vào C
 
 ### Mẫu 3: Chỉ chèn nhịp nghỉ `[pause]` / `[nghi]` và nhấn giọng mà không sửa từ vựng
 > *"Theo quy tắc trong `DNA_LANG_KINH_HU_KHONG_TTS.md`, hãy giữ nguyên từ vựng của văn bản dưới đây, chỉ chuẩn hóa dấu câu, đưa các chú thích đạo diễn như `(lên giọng)`, `(nhấn mạnh)`, `(ngân dài)` thành cấu trúc dấu câu + lệnh `[pause:...]` / `[nghi:...]` tương ứng theo Mục 5 để đưa vào phần mềm LangKinhHuKhong.TTS."*
+
+---
+
+## 9. HỖ TRỢ THƯ VIỆN GIỌNG TIẾNG TRUNG (`Voices/TrungQuoc` - `zh-CN`)
+
+Phần mềm hỗ trợ đồng bộ văn bản và phụ đề song ngữ Việt – Trung với 5 bộ giọng Nam/Nữ Tiếng Trung (`zh-CN`) trong `Voices/TrungQuoc`:
+- **Giọng Nam**: `zh_CN-chaowen-medium` (**Siêu Văn - Chaowen**, 1 giọng chuẩn Phổ thông) và `zh_CN-aishell3-nam-medium` (**Tuyển Tập 36 Giọng Nam AISHELL-3**, chọn từng giọng trong ô `SPEAKER`).
+- **Giọng Nữ**: `zh_CN-huayan-medium` (**Hoa Nghiên - Huayan**), `zh_CN-xiao_ya-medium` (**Tiểu Nhã - Xiao Ya**) và `zh_CN-aishell3-nu-medium` (**Tuyển Tập 138 Giọng Nữ AISHELL-3**).
+- **Quy tắc dấu câu & Từ đa âm Tiếng Trung**:
+  - Giữ dấu phẩy toàn角 `，` bên trong câu để đọc liền mạch và dùng `；` (`260ms`), `。` / `！` / `？` (`300ms`) kết hợp `[pause:...]` để đồng bộ nhịp nghỉ với bản dịch tiếng Việt.
+  - Bộ tiền xử lý [`SpeechPacing.PrepareTextForPiper`](LangKinhHuKhong.TTS/Core/SpeechPacing.cs) tự động phân giải các từ đa âm phổ biến (`重来` / `重新` -> `chóng`, trợ từ `一遍地` / `慢慢地` -> `de`, `长大` -> `zhǎng`, `银行` -> `háng`, `音乐` -> `yuè`...) khi gửi sang `piper.exe` nhưng vẫn giữ nguyên 100% mặt chữ Hán gốc trên trình soạn thảo và file `.srt`.

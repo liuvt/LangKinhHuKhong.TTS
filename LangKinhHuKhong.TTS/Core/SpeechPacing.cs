@@ -95,14 +95,43 @@ public static class SpeechPacing
                                  char.IsDigit(input[i - 1]) && char.IsDigit(input[i + 1]);
             if (betweenDigits && c is '.' or ',' or ':') continue;
 
+            // Handle ellipsis (... or …):
+            // If ellipsis is mid-sentence before a lowercase word (e.g. "thế này... thì tốt biết mấy"),
+            // eSpeak-ng assigns secondary stress (tˌi2) to Vietnamese connectors ("thì", "là", "mà", "nhưng").
+            // Splitting into a new Piper utterance at BOS causes VITS to swallow the unstressed first word.
+            // Keep mid-sentence ellipsis inside the same sentence as a comma pause!
+            if (c == '…' || (c == '.' && i + 1 < input.Length && input[i + 1] == '.'))
+            {
+                int extraDots = 0;
+                while (i + 1 < input.Length && input[i + 1] is '.' or '…')
+                {
+                    i++;
+                    extraDots++;
+                }
+
+                int look = i + 1;
+                while (look < input.Length && (input[look] == ' ' || input[look] == '\t'))
+                    look++;
+
+                if (look < input.Length && char.IsLower(input[look]) && segment.Length < MaxPhraseLength - 30)
+                {
+                    // Replace mid-sentence '...' or '…' before a lowercase word with ',' so Piper keeps full clause context.
+                    segment[^1] = ',';
+                    continue;
+                }
+
+                for (int d = 0; d < extraDots; d++) segment.Append('.');
+                while (i + 1 < input.Length && IsTrailing(input[i + 1]))
+                    segment.Append(input[++i]);
+                Flush(EllipsisPauseMs);
+                continue;
+            }
+
             int pause = c switch
             {
-                '.' when i + 1 < input.Length && input[i + 1] == '.' => 0,
-                '.' when i > 0 && input[i - 1] == '.' => EllipsisPauseMs,
                 '.' or '。' or '۔' => PeriodPauseMs,
                 '!' or '！' => ExclamationPauseMs,
                 '?' or '？' or '؟' => QuestionPauseMs,
-                '…' => EllipsisPauseMs,
                 _ => 0
             };
             if (pause > 0)
@@ -134,4 +163,35 @@ public static class SpeechPacing
 
     private static bool IsTrailing(char c) => c is '.' or '!' or '?' or '…' or '。' or
         '！' or '？' or '؟' or '”' or '’' or '"' or '\'' or ')' or ']' or '）' or '」' or '』';
+
+    private static readonly (string Pattern, string Replacement)[] ChinesePolyphoneFixes =
+    [
+        ("重来", "崇来"), ("重新", "崇新"), ("重复", "崇复"), ("重蹈", "崇蹈"), ("重逢", "崇逢"),
+        ("重叠", "崇叠"), ("重温", "崇温"), ("重演", "崇演"), ("重现", "崇现"), ("重申", "崇申"),
+        ("一遍地", "一遍的"), ("一次地", "一次的"), ("一步地", "一步的"), ("一点地", "一点的"),
+        ("不断地", "不断的"), ("不停地", "不停的"), ("慢慢地", "慢慢的"), ("静静地", "静静的"),
+        ("悄悄地", "悄悄的"), ("默默地", "默默的"), ("渐渐地", "渐渐的"), ("深深地", "深深的"),
+        ("紧紧地", "紧紧的"), ("好好地", "好好的"), ("轻轻地", "轻轻的"), ("缓缓地", "缓缓的"),
+        ("长大", "掌大"), ("成长", "成掌"), ("家长", "家掌"), ("校长", "校掌"),
+        ("银行", "银航"), ("行业", "航业"), ("同行", "同航"),
+        ("睡觉", "睡叫"), ("午觉", "午叫"),
+        ("音乐", "音月"), ("乐器", "月器"), ("乐队", "月队"),
+        ("归还", "归环"), ("偿还", "偿环"), ("还给", "环给"),
+        ("了解", "暸解"), ("受不了", "受不暸"), ("大不了", "大不暸"), ("了不起", "暸不起")
+    ];
+
+    public static string PrepareTextForPiper(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text;
+        // eSpeak-ng in piper_phonemize strips '...' and '…' without emitting a period/comma phoneme token,
+        // which causes missing sentence-end cadence or fused words. Convert trailing ellipsis to '.' for Piper.
+        var cleaned = Regex.Replace(text.Trim(), @"(?:\.{2,}|…+)\s*([""'”’)\]]*)$", ".$1");
+        cleaned = Regex.Replace(cleaned, @"(?:\.{2,}|…+)", ",");
+        if (cleaned.Any(IsCjk))
+        {
+            foreach (var (pattern, replacement) in ChinesePolyphoneFixes)
+                cleaned = cleaned.Replace(pattern, replacement, StringComparison.Ordinal);
+        }
+        return cleaned;
+    }
 }

@@ -69,9 +69,10 @@ public sealed class PersistentPiperSession : IAsyncDisposable
     {
         if (_disposed || _process.HasExited) throw new InvalidOperationException("Phiên Piper đã dừng.");
         if (File.Exists(wav)) File.Delete(wav);
+        var piperText = SpeechPacing.PrepareTextForPiper(text);
         var input = speakerId is int id
-            ? new { text, output_file = wav, speaker_id = (int?)id }
-            : new { text, output_file = wav, speaker_id = (int?)null };
+            ? new { text = piperText, output_file = wav, speaker_id = (int?)id }
+            : new { text = piperText, output_file = wav, speaker_id = (int?)null };
         var json = JsonSerializer.Serialize(input, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
         await _process.StandardInput.WriteLineAsync(json.AsMemory(), ct);
         await _process.StandardInput.FlushAsync(ct);

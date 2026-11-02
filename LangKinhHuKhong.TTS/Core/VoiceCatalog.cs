@@ -9,9 +9,9 @@ namespace LangKinhHuKhong.TTS.Core;
 public static class VoiceCatalog
 {
     private static readonly string[] FemaleNames =
-    ["ngochuyen", "mytam", "maiphuong", "phuongtrang", "minhthu", "thanhphuong", "banmai", "ngoclan", "minhanh", "thuha", "yen nhi", "yen_nhi", "vais1000", "female", "lessac", "amy", "alba", "cori", "jenny", "aria"];
+    ["ngochuyen", "mytam", "maiphuong", "phuongtrang", "minhthu", "thanhphuong", "banmai", "ngoclan", "minhanh", "thuha", "yen nhi", "yen_nhi", "vais1000", "female", "lessac", "amy", "alba", "cori", "jenny", "aria", "huayan", "xiaoya", "xiao_ya", "aishell3-nu", "aishell3_nu"];
     private static readonly string[] MaleNames =
-    ["ngocngan", "manhdung", "taian", "minhquang", "thientam", "duyoryx", "chieu", "lacphi", "minhkhang", "tranthanh", "vietthao", "quanghuy", "25hours", "male", "ryan", "danny", "joe", "kusal", "alan"];
+    ["ngocngan", "manhdung", "taian", "minhquang", "thientam", "duyoryx", "chieu", "lacphi", "minhkhang", "tranthanh", "vietthao", "quanghuy", "25hours", "male", "ryan", "danny", "joe", "kusal", "alan", "chaowen", "aishell3-nam", "aishell3_nam"];
 
     public static List<VoiceModel> Scan(string root)
     {
@@ -32,7 +32,8 @@ public static class VoiceCatalog
             // English voices all appearing simply as "en" in the dropdown.
             var commonFolder = Normalize(folder) is
                 "nu" or "nam" or "khac" or "vi" or "en" or "zh" or "ja" or "ko" or "th" or
-                "fr" or "de" or "es" or "ru" or "id" or "pt" or "voices" or "voice";
+                "fr" or "de" or "es" or "ru" or "id" or "pt" or "voices" or "voice" or
+                "trungquoc" or "vietnam" or "hanquoc" or "anh" or "my";
             var name = parts.Length == 1 || commonFolder
                 ? Path.GetFileNameWithoutExtension(model) : folder;
             var category = Category(parts, name);
@@ -93,7 +94,8 @@ public static class VoiceCatalog
         var exampleDir = Path.Combine(voicesFolder, "example");
         Directory.CreateDirectory(exampleDir);
         var stem = SanitizeFileStem(Path.GetFileNameWithoutExtension(voice.ModelPath));
-        var suffix = voice.NumSpeakers > 1 && speakerId.HasValue ? $"_spk{speakerId.Value}" : "";
+        int? effectiveSpeaker = speakerId ?? (voice.NumSpeakers > 1 && voice.Speakers.Count > 0 ? voice.Speakers[0].Id : null);
+        var suffix = voice.NumSpeakers > 1 && effectiveSpeaker.HasValue ? $"_spk{effectiveSpeaker.Value}" : "";
         return Path.Combine(exampleDir, $"{stem}{suffix}.mp3");
     }
 
