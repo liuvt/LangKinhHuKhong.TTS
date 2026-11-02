@@ -11,10 +11,20 @@ public sealed class PersistentPiperSession : IAsyncDisposable
     private readonly Task<string> _stderr;
     private bool _disposed;
 
-    private PersistentPiperSession(Process process)
+    public bool IsCudaActive { get; }
+
+    private PersistentPiperSession(Process process, bool isCudaActive)
     {
         _process = process;
         _stderr = process.StandardError.ReadToEndAsync();
+        IsCudaActive = isCudaActive;
+    }
+
+    public static bool HasCudaProvider(string exe)
+    {
+        if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe)) return false;
+        var dir = Path.GetDirectoryName(exe);
+        return dir is not null && File.Exists(Path.Combine(dir, "onnxruntime_providers_cuda.dll"));
     }
 
     public static async Task<PersistentPiperSession> StartAsync(string exe, string model,
@@ -22,7 +32,7 @@ public sealed class PersistentPiperSession : IAsyncDisposable
     {
         if (!File.Exists(exe)) throw new FileNotFoundException("Không thấy piper.exe", exe);
         string? gpuArg = null;
-        if (cuda)
+        if (cuda && HasCudaProvider(exe))
         {
             var help = new ProcessStartInfo(exe)
             {
@@ -40,7 +50,7 @@ public sealed class PersistentPiperSession : IAsyncDisposable
             var helpText = await stdout + "\n" + await stderr;
             if (helpText.Contains("--use-cuda", StringComparison.OrdinalIgnoreCase)) gpuArg = "--use-cuda";
             else if (helpText.Contains("--cuda", StringComparison.OrdinalIgnoreCase)) gpuArg = "--cuda";
-            else throw new NotSupportedException("piper.exe hiện tại không khai báo CUDA. Chọn CPU hoặc thay runtime Piper có CUDA.");
+            // If piper.exe does not advertise CUDA flags, fall back cleanly to CPU instead of crashing the render job.
         }
         var info = new ProcessStartInfo(exe)
         {
@@ -52,7 +62,7 @@ public sealed class PersistentPiperSession : IAsyncDisposable
             info.ArgumentList.Add(arg);
         if (gpuArg is not null) info.ArgumentList.Add(gpuArg);
         var process = Process.Start(info) ?? throw new InvalidOperationException("Không khởi động được Piper JSON session.");
-        return new PersistentPiperSession(process);
+        return new PersistentPiperSession(process, gpuArg is not null);
     }
 
     public async Task SynthesizeAsync(string text, string wav, int? speakerId, CancellationToken ct)

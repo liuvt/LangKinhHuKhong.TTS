@@ -1180,6 +1180,24 @@ public sealed partial class MainForm
             "",
             "Đảm bảo an toàn cho cả văn bản tiếng Việt, Anh và CJK (Trung/Nhật/Hàn)."),
 
+        // 2B. Kỹ thuật Nhấn âm, Lên/Xuống giọng & Ngân âm cuối
+        new("2B. Nhấn âm, Lên/Xuống giọng & Ngân âm", "Ép LÊN GIỌNG tại 1 từ:  Từ! [pause:120ms] ...", "Bật cao độ (Pitch Rise)",
+            "Để ép AI vút cao giọng ngay tại 1 từ giữa câu (VD: chữ 'Chính'), đặt dấu '!' hoặc '?!' ngay sau từ đó kèm [pause:120ms] rồi viết tiếp vế sau.",
+            "Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!",
+            "Ví dụ:\n• Cách 1 (Bật cao dứt khoát): Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!\n• Cách 2 (Treo cao liền hơi bằng dấu phẩy): Kẻ phản bội... [pause:300ms] Chính, là ngươi!\n• Cách 3 (Điệp từ leo thang): Kẻ phản bội... [pause:400ms] Chính là... [pause:200ms] chính là ngươi!"),
+        new("2B. Nhấn âm, Lên/Xuống giọng & Ngân âm", "Nhấn âm từ khóa:  , từ khóa,   hoặc  ... [pause:300ms] từ!", "Tăng trọng lượng từ",
+            "Bao từ cần nhấn bằng cặp dấu phẩy ', từ,' (nhấn nhẹ liền hơi) hoặc đặt '... [pause:300ms]' ngay trước từ khóa (nhấn kịch tính kiểu Audiobook).",
+            "... [pause:300ms] ",
+            "Ví dụ:\n• Nhấn liền hơi: Hắn, tuyệt đối, sẽ không bao giờ quay lại.\n• Nhấn kịch tính: Người đứng sau toàn bộ chuyện này chính là... [pause:300ms] ngươi!"),
+        new("2B. Nhấn âm, Lên/Xuống giọng & Ngân âm", "Lên giọng cuối câu vs. Xuống giọng trầm", "? / ?!  (Lên)   |   ...  (Xuống)",
+            "Dấu '?' hoặc '?!' kèm từ hỏi (sao, ư, à, hả) đẩy cao độ cuối câu lên; dấu ba chấm '...' hạ giọng trầm lắng xuống.",
+            "sao? [pause:450ms] Không... ",
+            "Ví dụ tương phản Lên - Xuống giọng:\nNgươi nghĩ ta sợ ngươi sao? [pause:450ms] Không... ta chỉ thấy tiếc cho ngươi thôi..."),
+        new("2B. Nhấn âm, Lên/Xuống giọng & Ngân âm", "Ngân âm cuối (Kéo dài):  ơi... / à... / thôi... + [pause:800ms]", "Kéo giãn âm cuối 15–25%",
+            "Dùng trợ từ mở nguyên âm (ơi, à, ừ, nhé, thôi, sao, đâu) kết hợp '...' và [pause:800ms] để giữ dư âm. KHÔNG viết lặp chữ kiểu 'ơiiii' để tránh lỗi đánh vần.",
+            "ơi... ơ-i... [pause:700ms]",
+            "Ví dụ ngân âm:\n• Tiếng gọi ngân xa: Sư phụ ơi... ơ-i... [pause:600ms]\n• Tiếng vọng láy âm: Tiếng chuông ngân vang... vang mãi... vang mãi... [pause:900ms]"),
+
         // 3. Cú pháp Markdown (.md)
         new("3. Cú pháp Markdown (.md)", "# Tiêu đề  /  ## Chương 1  /  > Trích dẫn", "Lọc ký hiệu, giữ lời",
             "Khi nhập tệp .md, các ký hiệu #, ##, ### và dấu trích dẫn '>' đầu dòng được tự động loại bỏ để Piper không đọc chữ 'thăng' hay 'lớn hơn'.",
@@ -1338,14 +1356,15 @@ public sealed partial class MainForm
         loadDemoBtn.Click += (_, _) =>
         {
             var demoScript =
-                "// KỊCH BẢN MẪU HƯỚNG DẪN SỬ DỤNG CÂU LỆNH TEXT TRONG STUDIO\n" +
+                "// KỊCH BẢN MẪU HƯỚNG DẪN SỬ DỤNG CÂU LỆNH TEXT & NGỮ ĐIỆU TRONG STUDIO\n" +
                 "[[Ghi chú đạo diễn: Đoạn trong ngoặc vuông kép này sẽ tự động bị bỏ qua khi đọc]]\n" +
                 "Chương 1: Tiếng vọng từ hư không. [pause:1.2s]\n\n" +
                 "Đêm đã về khuya, sương mù bao phủ khắp sườn núi. [nghi:700ms] Trong căn phòng nhỏ, ánh nến vẫn lập lòe bên trang sách cũ.\n" +
                 "\"Ngươi thực sự muốn bước vào cánh cổng đó sao?\" [pause:600ms] Lão nhân trầm giọng hỏi.\n" +
-                "Chàng trai khẽ gật đầu, đáp lại không chút do dự: \"Dù phía trước là vực thẳm, ta vẫn phải đi!\"\n\n" +
-                "[note: Chuyển cảnh sang buổi sáng hôm sau]\n" +
-                "Đúng 06:30 sáng, tiếng chuông đầu tiên vang lên... [break:1.5s] Một hành trình mới chính thức bắt đầu.";
+                "Hắn đột ngột quay phắt lại, chỉ thẳng tay và quát lớn:\n" +
+                "\"Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!\" [pause:700ms]\n\n" +
+                "[note: Chuyển cảnh - Ngân âm cuối câu]\n" +
+                "Giữa khoảng không mênh mông ấy, chỉ còn tiếng chuông ngân vang khắp sườn núi... vang mãi... vang mãi... [break:1.5s] Một hành trình mới chính thức bắt đầu.";
             if (!string.IsNullOrWhiteSpace(_editor.Text) &&
                 MessageBox.Show("Thay thế nội dung đang có trong Studio bằng kịch bản mẫu?", "Nạp kịch bản mẫu",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
@@ -1503,6 +1522,34 @@ public sealed partial class MainForm
         • Xuống 1 dòng (Enter)       : Ngắt câu + chèn 350ms khoảng lặng.
         • Xuống 2 dòng (Đoạn mới)    : Ngắt đoạn văn + chèn 550ms khoảng lặng.
         • Số & Giờ (3.14, 1,5, 10:30): Tự động nhận diện chữ số hai bên, không cắt câu nhầm.
+
+        II-B. KỸ THUẬT NHẤN ÂM, LÊN/XUỐNG GIỌNG & KÉO DÀI (NGÂN ÂM) CUỐI CÂU
+        --------------------------------------------------------------------------------
+        1. Ép LÊN GIỌNG tại một từ cụ thể giữa câu (Ví dụ: "Kẻ phản bội... Chính (lên giọng) là ngươi"):
+           • Cách 1 (Bật cao chữ "Chính" dứt khoát bằng ! hoặc ?! kèm nhịp nghỉ ngắn):
+             Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!
+             (Hoặc ngỡ ngàng phát hiện): Kẻ phản bội... [pause:350ms] Chính?! [pause:150ms] Chính là ngươi!
+           • Cách 2 (Treo cao chữ "Chính" liền hơi trong 1 câu bằng dấu phẩy):
+             Kẻ phản bội... [pause:300ms] Chính, là ngươi!
+           • Cách 3 (Điệp từ leo thang 2 nhịp kiểu phim/truyện kiếm hiệp):
+             Kẻ phản bội... [pause:400ms] Chính là... [pause:200ms] chính là ngươi!
+
+        2. Kỹ thuật NHẤN ÂM vào từ khóa:
+           • Đóng khung bằng dấu phẩy: "Hắn, tuyệt đối, sẽ không bao giờ quay lại."
+           • Đặt [pause:300ms] ngay trước từ khóa: "Người đứng sau toàn bộ chuyện này chính là... [pause:300ms] ngươi!"
+
+        3. Điều khiển LÊN GIỌNG vs. XUỐNG GIỌNG cuối câu:
+           • Lên giọng (nghi vấn/chất vấn): Dùng từ hỏi (sao, ư, à, hả) + dấu '?' hoặc '?!'.
+           • Xuống giọng (trầm buồn/lắng đọng): Kết câu bằng dấu ba chấm '...' + [pause:700ms].
+           • Tương phản Lên - Xuống: "Ngươi nghĩ ta sợ ngươi sao? [pause:450ms] Không... ta chỉ thấy tiếc cho ngươi thôi..."
+
+        4. Kỹ thuật KÉO DÀI / NGÂN ÂM CUỐI (Tuyệt đối KHÔNG gõ lặp chữ kiểu 'ơiiii' để tránh lỗi đánh vần):
+           • Dùng trợ từ mở nguyên âm (ơi, à, ừ, nhé, thôi, sao, đâu) + dấu '...':
+             "Đợi ta với... [pause:600ms]"
+           • Nhân âm bằng gạch nối '-' hoặc tách nhịp '...':
+             "Sư phụ ơi... ơ-i... [pause:600ms]"  |  "Haiz... ài... [pause:500ms]"
+           • Lặp từ láy âm cuối kèm '...' và [pause:900ms] để giữ dư âm:
+             "Tiếng chuông ngân vang khắp sườn núi... vang mãi... vang mãi... [pause:900ms]"
 
         III. HƯỚNG DẪN TÍNH NĂNG REVIEW GIỚI HẠN TỪ & PHÒNG NGHE THỬ VOICE LAB
         --------------------------------------------------------------------------------

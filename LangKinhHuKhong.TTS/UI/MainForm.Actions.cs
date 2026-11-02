@@ -1051,12 +1051,27 @@ public sealed partial class MainForm
     {
         if (_dependencies is null) return;
         var piper = File.Exists(_audio.PiperExe);
+        var hasCuda = PersistentPiperSession.HasCudaProvider(_audio.PiperExe);
         var ffmpeg = File.Exists(_audio.FfmpegExe);
         var ffprobe = File.Exists(Path.Combine(Path.GetDirectoryName(_audio.FfmpegExe) ?? "", "ffprobe.exe"));
         var samples = _voices.Count(v => VoiceCatalog.HasExampleAudio(_storage.Settings.VoicesFolder, v));
         _dependencies.Text =
-            $"{(piper ? "✓" : "✕")} Piper (Runtime/piper)   ·   {(ffmpeg && ffprobe ? "✓" : "✕")} FFmpeg + FFprobe (Runtime/ffmpeg)   ·   {_voices.Count} Voices ({samples} mẫu)   ·   Output sẵn sàng";
+            $"{(piper ? "✓" : "✕")} Piper ({(hasCuda ? "CPU + CUDA" : "CPU-only")})   ·   {(ffmpeg && ffprobe ? "✓" : "✕")} FFmpeg + FFprobe   ·   {_voices.Count} Voices ({samples} mẫu)   ·   Output sẵn sàng";
         _dependencies.ForeColor = piper && ffmpeg && ffprobe && _voices.Count > 0 ? Theme.Green : Theme.Gold;
+
+        if (_engineCombo is not null)
+        {
+            int idx = Math.Max(0, _engineCombo.SelectedIndex);
+            _engineCombo.BeginUpdate();
+            try
+            {
+                _engineCombo.Items.Clear();
+                _engineCombo.Items.Add("CPU (Ổn định)");
+                _engineCombo.Items.Add(hasCuda ? "CUDA (GPU)" : "CUDA (Tự về CPU)");
+                _engineCombo.SelectedIndex = Math.Min(idx, _engineCombo.Items.Count - 1);
+            }
+            finally { _engineCombo.EndUpdate(); }
+        }
     }
 
     private static void OpenFolder(string folder)

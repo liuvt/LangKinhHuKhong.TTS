@@ -103,38 +103,90 @@ Vì model Piper ONNX chạy **100% Offline** theo từ điển âm vị cố đ�
 
 ---
 
-## 5. KHUNG ĐỊNH DẠNG CHUẨN CHO TRUYỆN DÀI & SÁCH NÓI (BLUEPRINT)
+## 5. KỸ THUẬT ĐIỀU KHIỂN NGỮ ĐIỆU: NHẤN ÂM, LÊN/XUỐNG GIỌNG & NGÂN ÂM CUỐI
+
+Mô hình **Piper ONNX (VITS Neural TTS)** không sử dụng thẻ XML SSML mà điều khiển **trọng âm (stress), cao độ (pitch) và độ ngân (duration)** trực tiếp qua cấu trúc dấu câu, cách tách mệnh đề, lệnh `[pause:...]` và trợ từ nguyên âm mở. Khi biên tập kịch bản diễn cảm, AI phải áp dụng các quy tắc sau:
+
+### 5.1. Kỹ thuật Nhấn Âm (Nhấn mạnh vào 1 từ hoặc cụm từ khóa)
+Mô hình VITS đặt lực nhấn mạnh nhất vào từ đứng ngay sau khoảng lặng ngắn hoặc từ được đóng khung bằng dấu câu:
+1. **Đóng khung bằng dấu phẩy `,` (Nhấn nhẹ, tự nhiên liền hơi)**:
+   - Bao từ cần nhấn bằng dấu phẩy để bộ dự đoán thời lượng (Duration Predictor) tách nhịp trước và sau từ đó.
+   - *Ví dụ*: `Hắn, tuyệt đối, sẽ không bao giờ quay đầu lại.`
+2. **Đặt `[pause:250ms]` – `[pause:350ms]` ngay trước từ khóa (Nhấn kịch tính kiểu Audiobook)**:
+   - *Ví dụ*: `Người đứng sau toàn bộ âm mưu này chính là... [pause:300ms] ngươi!`
+3. **Tách từ cần nhấn thành nhịp câu ngắn có dấu `!` (Nhấn gắt, dứt khoát)**:
+   - *Ví dụ*: `Không! [pause:250ms] Tuyệt đối không thể như vậy!`
+
+### 5.2. Kỹ thuật Lên Giọng – Xuống Giọng (Pitch & Intonation Control)
+- **Ép LÊN GIỌNG tại một từ cụ thể giữa câu** (Ví dụ gốc: *"Kẻ phản bội... Chính (lên giọng) là ngươi"*):
+  - Nếu viết liền `"Chính là ngươi."` thì chữ `"Chính"` sẽ bị đọc lướt ngang. Để ép AI vút cao giọng ngay tại chữ **"Chính"**, dùng 1 trong 3 cách:
+    - **Cách A (Bật cao chữ "Chính" dứt khoát bằng `!` hoặc `?!`)**:
+      `Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!`
+      *(Hoặc ngỡ ngàng phát hiện)*: `Kẻ phản bội... [pause:350ms] Chính?! [pause:150ms] Chính là ngươi!`
+    - **Cách B (Treo cao chữ "Chính" liền hơi bằng dấu phẩy `,`)**:
+      `Kẻ phản bội... [pause:300ms] Chính, là ngươi!`
+    - **Cách C (Điệp từ leo thang 2 nhịp)**:
+      `Kẻ phản bội... [pause:400ms] Chính là... [pause:200ms] chính là ngươi!`
+- **Lên giọng cuối câu (nghi vấn, kinh ngạc, chất vấn)**:
+  - Kết hợp từ để hỏi (`sao`, `ư`, `à`, `hả`, `chăng`) + dấu `?` hoặc `?!`.
+  - *Ví dụ*: `Ngươi thật sự dám bước vào cánh cổng đó sao?` / `Chuyện này là thật ư?!`
+- **Xuống giọng trầm, lắng đọng (buồn, suy tư, huyền bí)**:
+  - Kết thúc câu bằng dấu ba chấm `...` (hoặc `…`), theo sau là `[pause:600ms]` – `[pause:1s]`.
+  - *Ví dụ*: `Rồi tất cả... cũng chỉ còn lại hư không... [pause:800ms]`
+- **Tương phản Lên giọng rồi Hạ giọng ngay câu sau**:
+  - *Ví dụ*: `Ngươi nghĩ ta sợ ngươi sao? [pause:450ms] Không... ta chỉ thấy tiếc cho ngươi thôi...`
+
+### 5.3. Kỹ thuật Kéo Dài / Ngân Âm Cuối (Vowel & Ending Elongation)
+> **CẢNH BÁO QUAN TRỌNG CHO AI**: Tuyệt đối **KHÔNG** viết lặp chữ cái liền nhau kiểu `"điiii"`, `"ơiiii"`, `"khôngggg"` vì bộ từ điển âm vị `eSpeak-ng` sẽ tưởng là từ lạ và đọc thành đánh vần từng chữ cái.
+
+Để kéo dài / ngân âm cuối mượt mà, AI phải dùng 4 kỹ thuật chuẩn sau:
+1. **Dùng dấu ba chấm `...` sau trợ từ mở nguyên âm (`ơi`, `à`, `ừ`, `nhỉ`, `nhé`, `thôi`, `sao`, `đâu`)**:
+   - Khi gặp trợ từ mở đi kèm `...`, VITS tự động kéo giãn âm tiết cuối thêm `15–25%`:
+   - *Ví dụ*: `Đợi ta với...` / `Trời đất ơi... [pause:500ms] Sao lại ra nông nỗi này...`
+2. **Nhân âm bằng gạch nối `-` hoặc tách nhịp bằng `...` (Cho tiếng gọi xa, tiếng thở dài, tiếng cười)**:
+   - *Tiếng gọi ngân xa*: `Sư phụ ơi... ơ-i... [pause:600ms]`
+   - *Tiếng thở dài ngân*: `Haiz... ài... [pause:500ms]`
+   - *Tiếng cười ngân*: `Ha ha... ha...`
+3. **Lặp từ láy âm cuối kèm dấu `...` (Tạo hiệu ứng tiếng vọng / ngân xa dần)**:
+   - *Ví dụ*: `Tiếng chuông ngân vang khắp sườn núi... vang mãi... vang mãi... [pause:900ms]`
+4. **Khóa dư âm (Decay) bằng `[pause:600ms]` – `[pause:1.2s]` sau dấu `...`**:
+   - Luôn chèn một nhịp nghỉ đủ dài sau câu ngân để âm tiết cuối không bị câu tiếp theo cắt cụt:
+   - *Ví dụ*: `Giữa khoảng không vô tận ấy, chỉ còn tiếng thở dài vọng lại... xa xăm... mờ mịt... [pause:1s]`
+
+---
+
+## 6. KHUNG ĐỊNH DẠNG CHUẨN CHO TRUYỆN DÀI & SÁCH NÓI (BLUEPRINT)
 
 Khi xuất kết quả cho người dùng dán vào **LangKinhHuKhong.TTS Studio**, AI hãy trình bày theo cấu trúc chuẩn sau:
 
 ```text
 // BẢN KỊCH BẢN ĐÃ CHUẨN HÓA CHO LANGKINHHUKHONG.TTS STUDIO
-[[Ghi chú: Đã chuẩn hóa số La Mã, đơn vị và gắn nhịp nghỉ tự nhiên]]
+[[Ghi chú: Đã chuẩn hóa số La Mã, đơn vị, nhịp nghỉ và ngữ điệu nhấn/lên/ngân giọng]]
 
 Chương 1: Tên chương truyện rõ ràng. [pause:1.5s]
 
 Đoạn mở đầu dẫn nhập bối cảnh với câu văn ngắn gọn, giàu hình ảnh. Giữa các câu có dấu chấm chuẩn xác để tạo nhịp nghỉ 310 mili-giây tự nhiên. [pause:600ms]
 
-"Lời thoại nhân vật được đặt trong dấu ngoặc kép chuẩn!" [nghi:450ms] Người kể chuyện tiếp lời ngay sau nhịp nghỉ ngắn.
+"Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!" [nghi:450ms] Người kể chuyện tiếp lời ngay sau nhịp nghỉ ngắn.
 
 "Nếu là câu hỏi đầy nghi hoặc, hãy kết thúc bằng dấu chấm hỏi?"
-"Và câu trả lời dứt khoát nằm ở dòng tiếp theo." [pause:800ms]
+"Và câu trả lời trầm lắng ngân dài ở dòng tiếp theo..." [pause:800ms]
 
 // Chuyển cảnh
 [note: Chuyển sang phân cảnh buổi tối]
-Đêm hôm đó, tại tòa thành cổ... [nghi:1s] Một bóng người lặng lẽ xuất hiện dưới ánh trăng. [pause:2s]
+Đêm hôm đó, tại tòa thành cổ... gió thổi lạnh lẽo... [nghi:1s] Một bóng người lặng lẽ xuất hiện dưới ánh trăng. [pause:2s]
 ```
 
 ---
 
-## 6. VÍ DỤ CHUYỂN ĐỔI THỰC TẾ (BEFORE vs. AFTER)
+## 7. VÍ DỤ CHUYỂN ĐỔI THỰC TẾ (BEFORE vs. AFTER)
 
 ### ❌ Văn bản thô ban đầu (Chưa qua DNA):
 > Chương IV: Quyết định lúc 2h sáng!!!
 > ========================
 > Ngày 15/08/2025, tại TP.HCM, hắn nhìn đồng hồ — đã 2h15p sáng, ngoài trời mưa tầm tã ko dứt, gió thổi ào ào qua khung cửa sổ tầng 12A làm tấm rèm bay phần phật, trong lòng hắn ngổn ngang trăm mối tơ vò vì hợp đồng $50,000 với cty đối tác vẫn chưa dc ký kết dù thời hạn chỉ còn 12h nữa là kết thúc...
 > 【Hệ thống nhắc nhở: Ký chủ còn 5% năng lượng】
-> Hắn thở dài: "Ta phải làm gì bây giờ???" (Ghi chú: đoạn này đọc giọng trầm buồn)
+> Hắn chỉ tay hét lớn: "Kẻ phản bội... Chính (lên giọng) là ngươi!!!" rồi thở dài: "Ta phải làm gì bây giờ???" (Ghi chú: đoạn này đọc giọng trầm buồn, ngân dài cuối câu)
 
 ### ✅ Văn bản sau khi AI chuẩn hóa theo `DNA_LANG_KINH_HU_KHONG_TTS.md`:
 ```text
@@ -145,21 +197,24 @@ Ngày 15 tháng 8 năm 2025, tại Thành phố Hồ Chí Minh. [pause:500ms] H�
 
 "Hệ thống nhắc nhở: Ký chủ còn 5 phần trăm năng lượng." [pause:700ms]
 
-[[Ghi chú: đoạn này đọc giọng trầm buồn]]
-Hắn thở dài... [nghi:600ms] "Ta phải làm gì bây giờ?" [pause:1.5s]
+Hắn chỉ tay hét lớn: [pause:250ms]
+"Kẻ phản bội... [pause:350ms] Chính! [pause:120ms] Là ngươi!" [pause:700ms]
+
+[[Ghi chú: đoạn này đọc giọng trầm buồn, ngân dài cuối câu]]
+Rồi hắn buông thõng bàn tay, thở dài... [nghi:600ms] "Ta phải làm gì bây giờ đây..." [pause:1.5s]
 ```
 
 ---
 
-## 7. MẪU CÂU LỆNH (PROMPT) ĐỂ NGƯỜI DÙNG GỬI CHO CHATGPT / AI KHÁC
+## 8. MẪU CÂU LỆNH (PROMPT) ĐỂ NGƯỜI DÙNG GỬI CHO CHATGPT / AI KHÁC
 
 Bạn có thể đính kèm file **`DNA_LANG_KINH_HU_KHONG_TTS.md`** này vào ChatGPT / Claude / Gemini và dùng ngay một trong các câu lệnh sau:
 
-### Mẫu 1: Chuẩn hóa văn bản / truyện tiếng Việt có sẵn
-> *"Hãy đọc kỹ file `DNA_LANG_KINH_HU_KHONG_TTS.md`. Sau đó biên tập và format lại toàn bộ văn bản dưới đây theo đúng chuẩn phần mềm LangKinhHuKhong.TTS: bung toàn bộ từ viết tắt/số La Mã/ký hiệu/đơn vị sang chữ tiếng Việt dễ đọc, ngắt lại các câu dài quá 200 ký tự, xóa ký tự rác, chuyển ghi chú vào `[[...]]` và chèn các lệnh `[pause:...]` / `[nghi:...]` ở tiêu đề chương, chỗ chuyển cảnh và cao trào cảm xúc. Giữ nguyên 100% cốt truyện và nội dung gốc."*
+### Mẫu 1: Chuẩn hóa văn bản / truyện tiếng Việt có sẵn (Đầy đủ Nhịp nghỉ + Nhấn âm + Ngân giọng)
+> *"Hãy đọc kỹ file `DNA_LANG_KINH_HU_KHONG_TTS.md`. Sau đó biên tập và format lại toàn bộ văn bản dưới đây theo đúng chuẩn phần mềm LangKinhHuKhong.TTS: bung toàn bộ từ viết tắt/số La Mã/ký hiệu/đơn vị sang chữ tiếng Việt dễ đọc, ngắt lại các câu dài quá 200 ký tự, xóa ký tự rác, chuyển ghi chú vào `[[...]]`, đồng thời áp dụng kỹ thuật Mục 5 (Nhấn âm, Lên/Xuống giọng, Ngân âm cuối bằng dấu `,`, `!`, `...` và `[pause:...]` / `[nghi:...]`) ở các đoạn hội thoại cao trào và chuyển cảnh. Giữ nguyên 100% cốt truyện gốc."*
 
-### Mẫu 2: Dịch truyện nước ngoài (Trung / Anh / Nhật / Hàn) sang chuẩn TTS
-> *"Dựa theo tiêu chuẩn trong file `DNA_LANG_KINH_HU_KHONG_TTS.md`, hãy dịch chương truyện sau sang tiếng Việt thuần mượt chuyên dùng cho sách nói (Audiobook). Tuyệt đối không để sót cấu trúc câu convert, đổi toàn bộ ngoặc ngoại lai sang `"..."`, viết rõ các con số/đơn vị, giữ độ dài mỗi câu dưới 180 ký tự và tự động chèn các lệnh `[pause:500ms]` – `[pause:1.5s]`, `[nghi:...]` vào các điểm ngắt nhịp cảm xúc và chuyển cảnh."*
+### Mẫu 2: Dịch truyện nước ngoài (Trung / Anh / Nhật / Hàn) sang chuẩn TTS Diễn cảm
+> *"Dựa theo tiêu chuẩn trong file `DNA_LANG_KINH_HU_KHONG_TTS.md`, hãy dịch chương truyện sau sang tiếng Việt thuần mượt chuyên dùng cho sách nói (Audiobook). Tuyệt đối không để sót cấu trúc câu convert, đổi toàn bộ ngoặc ngoại lai sang `"..."`, viết rõ các con số/đơn vị, giữ độ dài mỗi câu dưới 180 ký tự, đồng thời xử lý nhấn giọng, lên/xuống giọng ở lời thoại nhân vật và chèn các lệnh `[pause:300ms]` – `[pause:1.5s]`, `[nghi:...]` vào các điểm ngắt nhịp cảm xúc."*
 
-### Mẫu 3: Chỉ chèn nhịp nghỉ `[pause]` / `[nghi]` mà không sửa chữ
-> *"Theo quy tắc trong `DNA_LANG_KINH_HU_KHONG_TTS.md`, hãy giữ nguyên từng từ của văn bản dưới đây, chỉ chuẩn hóa dấu câu cuối dòng, đưa các chú thích ngoài lề vào `[[...]]` và chèn thêm các lệnh `[pause:...]` / `[nghi:...]` hợp lý vào tiêu đề, hội thoại và đoạn chuyển cảnh để đưa vào phần mềm LangKinhHuKhong.TTS."*
+### Mẫu 3: Chỉ chèn nhịp nghỉ `[pause]` / `[nghi]` và nhấn giọng mà không sửa từ vựng
+> *"Theo quy tắc trong `DNA_LANG_KINH_HU_KHONG_TTS.md`, hãy giữ nguyên từ vựng của văn bản dưới đây, chỉ chuẩn hóa dấu câu, đưa các chú thích đạo diễn như `(lên giọng)`, `(nhấn mạnh)`, `(ngân dài)` thành cấu trúc dấu câu + lệnh `[pause:...]` / `[nghi:...]` tương ứng theo Mục 5 để đưa vào phần mềm LangKinhHuKhong.TTS."*
