@@ -205,6 +205,19 @@ Hắn chỉ tay hét lớn: [pause:250ms]
 Rồi hắn buông thõng bàn tay, thở dài... [nghi:600ms] "Ta phải làm gì bây giờ đây..." [pause:1.5s]
 ```
 
+### ✅ Ví dụ 2 — Văn phong triết lý / cổ phong hào sảng:
+```text
+Đời người vốn dĩ, [pause:250ms] chẳng có hai chữ: thất bại. [pause:500ms]
+Hoặc là lập nên đại nghiệp, hoặc là tôi luyện nên thân; [pause:250ms] há có chuyện công quả nửa vời! [pause:650ms]
+
+Việc đáng mừng, thì ta mở tiệc ăn mừng; việc đáng ghi, thì ta khắc cốt ghi tâm. [pause:450ms]
+Phàm làm việc gì, tất phải tận lực đến cùng; tuyệt không làm chuyện vô ích, hoài phí tâm lực. [pause:650ms]
+
+Thế sự vô thường, việc chưa đạt được mục đích, thì ắt cũng thu về được một bài học xương máu. [pause:500ms]
+Ta cho phép thiên hạ vạn sự tùy duyên, nhưng tin chắc rằng: [pause:300ms]
+Phàm những gì đã xảy ra trên đời, chung quy, [nghi:350ms] đều ẩn chứa cơ duyên giúp ích cho chí hướng của ta... [pause:900ms]
+```
+
 ---
 
 ## 8. MẪU CÂU LỆNH (PROMPT) ĐỂ NGƯỜI DÙNG GỬI CHO CHATGPT / AI KHÁC
