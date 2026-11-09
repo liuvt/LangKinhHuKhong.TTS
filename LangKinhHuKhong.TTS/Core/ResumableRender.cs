@@ -77,9 +77,10 @@ public static class ResumableRender
                 }
                 if (state is null)
                 {
-                    if (session is null)
+                    var (model, config) = paths.Prepare(voice);
+                    if (session is null || !session.IsAlive)
                     {
-                        var (model, config) = paths.Prepare(voice);
+                        if (session is not null) await session.DisposeAsync();
                         session = await PersistentPiperSession.StartAsync(audio.PiperExe, model, config, useCuda, ct);
                     }
                     foreach (var part in new[] { mp3, srt, meta })
@@ -95,7 +96,17 @@ public static class ResumableRender
                             var wav = Path.Combine(folder, "current.wav");
                             try
                             {
-                                await session.SynthesizeAsync(chunk.Text, wav, speakerId, ct);
+                                try
+                                {
+                                    await session.SynthesizeAsync(chunk.Text, wav, speakerId, ct);
+                                }
+                                catch (Exception ex) when (ex is InvalidOperationException or IOException && !ct.IsCancellationRequested)
+                                {
+                                    await session.DisposeAsync();
+                                    session = await PersistentPiperSession.StartAsync(audio.PiperExe, model, config, useCuda, ct);
+                                    var fallbackText = SpeechPacing.SanitizeFallbackForPiper(chunk.Text);
+                                    await session.SynthesizeAsync(fallbackText, wav, speakerId, ct);
+                                }
                                 encoder ??= new StreamingPcmEncoder(audio.FfmpegExe, mp3, wav);
                                 var frames = await encoder.AppendAsync(wav, chunk.PauseAfterMs,
                                     SpeechPacing.InitialPauseMs, ct);

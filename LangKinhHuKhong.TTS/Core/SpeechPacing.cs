@@ -164,6 +164,22 @@ public static class SpeechPacing
     private static bool IsTrailing(char c) => c is '.' or '!' or '?' or '…' or '。' or
         '！' or '？' or '؟' or '”' or '’' or '"' or '\'' or ')' or ']' or '）' or '」' or '』';
 
+    private static readonly Regex NonCompoundDashOrQuote = new(
+        @"(?<![\p{L}\p{N}])[-–—'‘’]+|[-–—'‘’]+(?![\p{L}\p{N}])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TrailingEllipsis = new(
+        @"(?:\.{2,}|…+)\s*([""'”’)\]]*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex AnyEllipsis = new(
+        @"(?:\.{2,}|…+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex MultiWhitespace = new(
+        @"\s+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly (string Pattern, string Replacement)[] ChinesePolyphoneFixes =
     [
         ("重来", "崇来"), ("重新", "崇新"), ("重复", "崇复"), ("重蹈", "崇蹈"), ("重逢", "崇逢"),
@@ -180,18 +196,66 @@ public static class SpeechPacing
         ("了解", "暸解"), ("受不了", "受不暸"), ("大不了", "大不暸"), ("了不起", "暸不起")
     ];
 
+    public static bool HasPronounceableText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        foreach (var ch in text)
+        {
+            if (ch == '\uFFFD') continue;
+            if (char.IsLetterOrDigit(ch)) return true;
+        }
+        return false;
+    }
+
     public static string PrepareTextForPiper(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return text;
-        // eSpeak-ng in piper_phonemize strips '...' and '…' without emitting a period/comma phoneme token,
-        // which causes missing sentence-end cadence or fused words. Convert trailing ellipsis to '.' for Piper.
-        var cleaned = Regex.Replace(text.Trim(), @"(?:\.{2,}|…+)\s*([""'”’)\]]*)$", ".$1");
-        cleaned = Regex.Replace(cleaned, @"(?:\.{2,}|…+)", ",");
+
+        // 1. Convert full-width ASCII variants and strip BOM / zero-width / decorative quotes & brackets
+        //    that cause eSpeak-ng clause parser bugs (e.g. '"-Lão già' triggers 0xC0000005 segfault in espeak-ng.dll).
+        var sb = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (ch is (>= '\uFF10' and <= '\uFF19') or (>= '\uFF21' and <= '\uFF3A') or (>= '\uFF41' and <= '\uFF5A'))
+                sb.Append((char)(ch - 0xFEE0));
+            else if (ch is '\uFEFF' or '\u200B' or '\u200C' or '\u200D' or '\u2060' or '\uFFFD')
+                continue;
+            else if ("\"“”„«»「」『』【】《》〈〉()[]{}_*=#~^<>|\\/" .Contains(ch))
+                sb.Append(' ');
+            else
+                sb.Append(ch);
+        }
+
+        // 2. Strip hyphens/dashes/single-quotes that are NOT between two alphanumeric characters.
+        //    Prevents native eSpeak-ng null-dereference crash on patterns like '"-Word', ',-Word', ':-Word'.
+        var cleaned = NonCompoundDashOrQuote.Replace(sb.ToString(), " ");
+
+        // 3. eSpeak-ng in piper_phonemize strips '...' and '…' without emitting a period/comma phoneme token,
+        //    which causes missing sentence-end cadence or fused words. Convert trailing ellipsis to '.' for Piper.
+        cleaned = TrailingEllipsis.Replace(cleaned.Trim(), ".$1");
+        cleaned = AnyEllipsis.Replace(cleaned, ",");
+        cleaned = MultiWhitespace.Replace(cleaned, " ").Trim();
+
         if (cleaned.Any(IsCjk))
         {
             foreach (var (pattern, replacement) in ChinesePolyphoneFixes)
                 cleaned = cleaned.Replace(pattern, replacement, StringComparison.Ordinal);
         }
         return cleaned;
+    }
+
+    public static string SanitizeFallbackForPiper(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return ".";
+        var sb = new StringBuilder(text.Length);
+        foreach (var ch in PrepareTextForPiper(text))
+        {
+            if (char.IsLetterOrDigit(ch) || char.IsWhiteSpace(ch) || ch is ',' or '.' or '?' or '!' or '，' or '。' or '？' or '！')
+                sb.Append(ch);
+            else
+                sb.Append(' ');
+        }
+        var res = MultiWhitespace.Replace(sb.ToString(), " ").Trim();
+        return HasPronounceableText(res) ? res : ".";
     }
 }

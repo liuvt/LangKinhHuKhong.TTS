@@ -209,3 +209,12 @@ Check(ellipsisSegments.Count == 1 &&
       SpeechPacing.PrepareTextForPiper(ellipsisSegments[0].Text) == "Cũng đừng mãi tự hỏi rằng, giá như lúc đầu thế này, thì tốt biết mấy.",
       "Dấu ba chấm giữa câu trước chữ thường ('... thì') tự chuyển thành dấu phẩy để Piper không nuốt chữ 'thì'");
 
+var crashQuoteDash = "\"-Lão già tự xưng Tiêu Dao Vương há miệng cười ha hả.";
+var preppedCrashQuoteDash = SpeechPacing.PrepareTextForPiper(crashQuoteDash);
+Check(!preppedCrashQuoteDash.Contains("\"-") &&
+      preppedCrashQuoteDash.StartsWith("Lão già", StringComparison.Ordinal) &&
+      !SpeechPacing.HasPronounceableText(SpeechPacing.PrepareTextForPiper("\".")) &&
+      !SpeechPacing.HasPronounceableText(SpeechPacing.PrepareTextForPiper("---")),
+      "Khử cụm '\"-' gây lỗi Access Violation (0xC0000005) trong espeak-ng.dll và nhận diện câu rỗng không có chữ");
+
+
