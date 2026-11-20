@@ -41,6 +41,9 @@ public sealed class DesktopSettings
     public string LastCategory { get; set; } = "Tất cả";
     public string LastLanguage { get; set; } = "*";
     public int ReviewWordLimit { get; set; } = 50;
+    public int MaxParallelRenders { get; set; } = Math.Clamp(Environment.ProcessorCount / 4, 2, 4);
+    public bool MinimizeToTray { get; set; } = true;
+    public bool CloseToTrayWhenBusy { get; set; } = true;
     public string SampleText { get; set; } =
         "Xin chào, đây là giọng đọc mẫu của Lăng Kính Hư Không Studio. Âm thanh rõ nét, nhịp nghỉ tự nhiên, tối ưu cho sách nói và truyện dài.";
 }

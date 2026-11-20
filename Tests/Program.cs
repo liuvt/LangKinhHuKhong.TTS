@@ -217,4 +217,34 @@ Check(!preppedCrashQuoteDash.Contains("\"-") &&
       !SpeechPacing.HasPronounceableText(SpeechPacing.PrepareTextForPiper("---")),
       "Khử cụm '\"-' gây lỗi Access Violation (0xC0000005) trong espeak-ng.dll và nhận diện câu rỗng không có chữ");
 
+// v1.3 Clarity Pipeline tests: Smart multi-clause splitting, Vietnamese stress restoration, clock time & 1-pass DSP
+var lyDucChinh = "Lý Đức Chính vội vàng húp mấy miếng cháo nguội, lấy khăn vải dày quấn kín miệng mũi, cầm mảnh giấy viết từ đêm qua, trên đó ghi nguệch ngoạc số người trong từng hộ, rồi nhét túi tiền vào ngực áo. Trong túi có chút công quỹ mà ông được quyền sử dụng với tư cách trưởng thôn, cùng một phần tiền tích cóp của nhà mình. Chuẩn bị xong, ông bước ra cửa.";
+var claritySegs = SpeechPacing.SegmentText(TextProcessor.NormalizeForTts(lyDucChinh));
+Check(claritySegs.Count == 8 &&
+      claritySegs[0].Text == "Lý Đức Chính vội vàng húp mấy miếng cháo nguội," &&
+      claritySegs[4].Text == "rồi nhét túi tiền vào ngực áo." &&
+      claritySegs[7].Text == "Chuẩn bị xong, ông bước ra cửa.",
+      "Tách mệnh đề thông minh câu dài 5 dấu phẩy (<150 phoneme IDs/mệnh đề) nhưng giữ nguyên câu ngắn 'Chuẩn bị xong, ông bước ra cửa.'");
+
+var rawViConfig = """{"audio":{"sample_rate":22050},"espeak":{"voice":"vi"},"inference":{"noise_scale":0.667,"length_scale":1.0,"noise_w":0.8},"phoneme_id_map":{"ˈ":[120],"ˌ":[121]}}""";
+var enhancedViConfig = NativeVoicePaths.BuildClarityConfigJson(rawViConfig, "vi-VN");
+Check(enhancedViConfig.Contains("\"ˌ\":[120]", StringComparison.Ordinal) &&
+      enhancedViConfig.Contains("\"noise_scale\":0.42", StringComparison.Ordinal) &&
+      enhancedViConfig.Contains("\"noise_w\":0.45", StringComparison.Ordinal) &&
+      enhancedViConfig.Contains("\"length_scale\":1.06", StringComparison.Ordinal),
+      "Khôi phục trọng âm chính cho hư từ tiếng Việt ('ˌ' -> [120]) và siết thông số VITS rõ chữ (0.42 / 0.45 / 1.06)");
+
+var rawEnConfig = """{"audio":{"sample_rate":22050},"espeak":{"voice":"en-us"},"inference":{"noise_scale":0.667,"length_scale":1.0,"noise_w":0.8},"phoneme_id_map":{"ˈ":[120],"ˌ":[121]}}""";
+var enhancedEnConfig = NativeVoicePaths.BuildClarityConfigJson(rawEnConfig, "en-US");
+Check(enhancedEnConfig.Contains("\"ˌ\":[121]", StringComparison.Ordinal),
+      "Giữ nguyên trọng âm phụ tự nhiên cho tiếng Anh (en-US)");
+
+Check(SpeechPacing.PrepareTextForPiper("Lúc 10:30 sáng xe chạy.") == "Lúc 10 giờ 30 sáng xe chạy.",
+      "Chuẩn hóa giờ tiếng Việt (10:30 -> 10 giờ 30) cho Piper đọc rõ chữ mà không đổi text SRT");
+
+Check(StreamingPcmEncoder.BuildStudioClarityFilter(1.5).Contains("aresample=44100", StringComparison.Ordinal) &&
+      StreamingPcmEncoder.BuildStudioClarityFilter(1.5).Contains("atempo=1.5", StringComparison.Ordinal),
+      "Chuỗi lọc 1-pass 32-bit float 44.1kHz Clarity EQ + atempo chống nén MP3 hai lần");
+
+
 

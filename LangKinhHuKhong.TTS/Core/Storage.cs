@@ -101,6 +101,7 @@ public sealed class Storage
             Settings.RuntimeFolder = DefaultRuntimeFolder;
         }
         if (Settings.ReviewWordLimit <= 0) Settings.ReviewWordLimit = 50;
+        Settings.MaxParallelRenders = Math.Clamp(Settings.MaxParallelRenders <= 0 ? 3 : Settings.MaxParallelRenders, 1, 8);
         if (string.IsNullOrWhiteSpace(Settings.SampleText))
         {
             Settings.SampleText =

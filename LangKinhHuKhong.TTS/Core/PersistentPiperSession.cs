@@ -31,29 +31,45 @@ public sealed class PersistentPiperSession : IAsyncDisposable
         return dir is not null && File.Exists(Path.Combine(dir, "onnxruntime_providers_cuda.dll"));
     }
 
-    private static uint ReadSampleRateFromConfig(string configPath)
+    public sealed record SynthesisParams(uint SampleRate, double NoiseScale, double LengthScale, double NoiseW);
+
+    public static SynthesisParams ReadSynthesisParams(string configPath)
     {
+        uint sampleRate = 22050u;
+        double noiseScale = 0.42;
+        double lengthScale = 1.06;
+        double noiseW = 0.45;
         try
         {
-            if (!File.Exists(configPath)) return 22050u;
+            if (!File.Exists(configPath)) return new(sampleRate, noiseScale, lengthScale, noiseW);
             using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
-            if (doc.RootElement.TryGetProperty("audio", out var audio) &&
+            var root = doc.RootElement;
+            if (root.TryGetProperty("audio", out var audio) &&
                 audio.ValueKind == JsonValueKind.Object &&
                 audio.TryGetProperty("sample_rate", out var sr) &&
                 sr.TryGetUInt32(out var rate) && rate >= 8000 && rate <= 96000)
             {
-                return rate;
+                sampleRate = rate;
+            }
+            if (root.TryGetProperty("inference", out var inf) && inf.ValueKind == JsonValueKind.Object)
+            {
+                if (inf.TryGetProperty("noise_scale", out var ns) && ns.TryGetDouble(out var nsVal) && nsVal > 0 && nsVal <= 2.0)
+                    noiseScale = nsVal;
+                if (inf.TryGetProperty("length_scale", out var ls) && ls.TryGetDouble(out var lsVal) && lsVal >= 0.25 && lsVal <= 4.0)
+                    lengthScale = lsVal;
+                if (inf.TryGetProperty("noise_w", out var nw) && nw.TryGetDouble(out var nwVal) && nwVal > 0 && nwVal <= 2.0)
+                    noiseW = nwVal;
             }
         }
         catch { }
-        return 22050u;
+        return new(sampleRate, noiseScale, lengthScale, noiseW);
     }
 
     public static async Task<PersistentPiperSession> StartAsync(string exe, string model,
         string config, bool cuda, CancellationToken ct)
     {
         if (!File.Exists(exe)) throw new FileNotFoundException("Không thấy piper.exe", exe);
-        uint sampleRate = ReadSampleRateFromConfig(config);
+        var syn = ReadSynthesisParams(config);
         string? gpuArg = null;
         if (cuda && HasCudaProvider(exe))
         {
@@ -82,11 +98,24 @@ public sealed class PersistentPiperSession : IAsyncDisposable
             StandardInputEncoding = new UTF8Encoding(false),
             StandardOutputEncoding = Encoding.UTF8
         };
-        foreach (var arg in new[] { "--model", model, "--config", config, "--json-input", "--quiet" })
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (var arg in new[]
+        {
+            "--model", model,
+            "--config", config,
+            "--noise_scale", syn.NoiseScale.ToString("0.###", inv),
+            "--length_scale", syn.LengthScale.ToString("0.###", inv),
+            "--noise_w", syn.NoiseW.ToString("0.###", inv),
+            "--sentence_silence", "0.12",
+            "--json-input",
+            "--quiet"
+        })
+        {
             info.ArgumentList.Add(arg);
+        }
         if (gpuArg is not null) info.ArgumentList.Add(gpuArg);
         var process = Process.Start(info) ?? throw new InvalidOperationException("Không khởi động được Piper JSON session.");
-        return new PersistentPiperSession(process, gpuArg is not null, sampleRate);
+        return new PersistentPiperSession(process, gpuArg is not null, syn.SampleRate);
     }
 
     public static void WriteSilentWav(string wavPath, uint sampleRate, int durationMs = 20)

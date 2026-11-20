@@ -13,8 +13,8 @@ namespace LangKinhHuKhong.TTS.Core;
 public static class SpeechPacing
 {
     public const int InitialPauseMs = 160;
-    public const int CommaPauseMs = 160;   // legacy constant, commas are now read inside sentences
-    public const int ClausePauseMs = 220;
+    public const int CommaPauseMs = 95;    // smart clause break pause (+120ms Piper tail = ~215ms natural comma breath)
+    public const int ClausePauseMs = 135;  // semicolon/colon clause break (+120ms Piper tail = ~255ms)
     public const int PeriodPauseMs = 310;
     public const int ExclamationPauseMs = 350;
     public const int QuestionPauseMs = 330;
@@ -22,7 +22,7 @@ public static class SpeechPacing
     public const int LinePauseMs = 350;
     public const int ParagraphPauseMs = 550;
     public const int SoftPauseMs = 100;
-    public const int MaxPhraseLength = 240;
+    public const int MaxPhraseLength = 180;
 
     private static readonly Regex InlinePauseCommand = new(
         @"^\[(?:pause|nghi|break|silence|im)\s*:\s*(?<val>\d+(?:[.,]\d+)?)\s*(?<unit>ms|s)?\s*\]",
@@ -143,8 +143,21 @@ public static class SpeechPacing
                 continue;
             }
 
-            // The only soft split is for unusually long sentences.
-            // Prefer a break at an existing comma near the max length, not every comma.
+            // Smart clause splitting (sherpa-onnx / piper1-gpl style):
+            // Keep short commas ("Không, nàng...", "Chuẩn bị xong, ông bước ra cửa.") inside one utterance,
+            // but split multi-clause sentences once a clause reaches 6+ words (~28+ chars) and the remainder
+            // also has 4+ words (~16+ chars). Prevents 300-550 phoneme-ID VITS attention drift & slurring.
+            if (c is ',' or '，' or '、' or ';' or '；' or ':' or '：')
+            {
+                bool isMajorClause = c is ';' or '；' or ':' or '：';
+                if (ShouldSplitAtClauseDelimiter(input, i, segment, isMajorClause))
+                {
+                    Flush(isMajorClause ? ClausePauseMs : CommaPauseMs);
+                    continue;
+                }
+            }
+
+            // Soft split for unusually long unpunctuated clauses.
             if (segment.Length >= MaxPhraseLength)
             {
                 bool canSplit = char.IsWhiteSpace(c) || (c is ',' or '，' or '،' or '、');
@@ -156,6 +169,84 @@ public static class SpeechPacing
         Flush(0);
         if (result.Count > 0) result[^1] = result[^1] with { PauseAfterMs = 0 };
         return result;
+    }
+
+    private static bool ShouldSplitAtClauseDelimiter(string input, int delimiterIndex, StringBuilder currentSegment, bool isMajorClause)
+    {
+        var current = currentSegment.ToString().AsSpan().Trim();
+        int minChars = isMajorClause ? 20 : 28;
+        int minWords = isMajorClause ? 4 : 6;
+        int minCjk = isMajorClause ? 12 : 18;
+
+        CountWordsAndCjk(current, out int words, out int cjk);
+        bool currentReady = (words >= minWords && current.Length >= minChars) || cjk >= minCjk;
+        if (!currentReady) return false;
+
+        int remStart = delimiterIndex + 1;
+        while (remStart < input.Length && (input[remStart] == ' ' || input[remStart] == '\t'))
+            remStart++;
+        if (remStart >= input.Length) return false;
+
+        // Avoid splitting short clauses right before weak connectors ("thì", "là") unless already long.
+        if (!isMajorClause && current.Length < 55 && StartsWithWeakConnector(input.AsSpan(remStart)))
+            return false;
+
+        int remEnd = remStart;
+        while (remEnd < input.Length)
+        {
+            char ch = input[remEnd];
+            if (ch is '\n' or '[' or '!' or '?' or '！' or '？' or '؟' or '…' or '。' or '۔')
+                break;
+            if (ch == '.')
+            {
+                bool decimalDot = remEnd > 0 && remEnd + 1 < input.Length &&
+                                  char.IsDigit(input[remEnd - 1]) && char.IsDigit(input[remEnd + 1]);
+                if (!decimalDot) break;
+            }
+            remEnd++;
+        }
+
+        var remaining = input.AsSpan(remStart, remEnd - remStart).Trim();
+        CountWordsAndCjk(remaining, out int remWords, out int remCjk);
+        return (remWords >= 4 && remaining.Length >= 16) || remCjk >= 8;
+    }
+
+    private static bool StartsWithWeakConnector(ReadOnlySpan<char> span)
+    {
+        string[] connectors = ["thì ", "là "];
+        foreach (var conn in connectors)
+        {
+            if (span.StartsWith(conn, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static void CountWordsAndCjk(ReadOnlySpan<char> span, out int words, out int cjk)
+    {
+        words = 0;
+        cjk = 0;
+        bool inWord = false;
+        foreach (var ch in span)
+        {
+            if (IsCjk(ch))
+            {
+                cjk++;
+                inWord = false;
+            }
+            else if (char.IsLetterOrDigit(ch))
+            {
+                if (!inWord)
+                {
+                    words++;
+                    inWord = true;
+                }
+            }
+            else if (ch is not '\'' and not '’' and not '-')
+            {
+                inWord = false;
+            }
+        }
     }
 
     private static bool IsCjk(char c) => c is >= '\u3400' and <= '\u9FFF' or
@@ -207,6 +298,27 @@ public static class SpeechPacing
         return false;
     }
 
+    private static readonly Regex ClockTimeRegex = new(
+        @"(?<![\d:])(?<h>[01]?\d|2[0-3]):(?<m>[0-5]\d)(?![\d:])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static bool ContainsVietnameseDiacritics(string value)
+    {
+        foreach (var ch in value)
+        {
+            if (ch is (>= '\u0102' and <= '\u0103') or (>= '\u0110' and <= '\u0111') or
+                (>= '\u0128' and <= '\u0129') or (>= '\u0168' and <= '\u0169') or
+                (>= '\u01A0' and <= '\u01B0') or (>= '\u1EA0' and <= '\u1EF9') or
+                'ă' or 'â' or 'đ' or 'ê' or 'ô' or 'ơ' or 'ư' or
+                'Ă' or 'Â' or 'Đ' or 'Ê' or 'Ô' or 'Ơ' or 'Ư' or
+                'á' or 'à' or 'ả' or 'ã' or 'ạ' or 'é' or 'è' or 'ẻ' or 'ẽ' or 'ẹ' or
+                'í' or 'ì' or 'ỉ' or 'ĩ' or 'ị' or 'ó' or 'ò' or 'ỏ' or 'õ' or 'ọ' or
+                'ú' or 'ù' or 'ủ' or 'ũ' or 'ụ' or 'ý' or 'ỳ' or 'ỷ' or 'ỹ' or 'ỵ')
+                return true;
+        }
+        return false;
+    }
+
     public static string PrepareTextForPiper(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return text;
@@ -230,7 +342,19 @@ public static class SpeechPacing
         //    Prevents native eSpeak-ng null-dereference crash on patterns like '"-Word', ',-Word', ':-Word'.
         var cleaned = NonCompoundDashOrQuote.Replace(sb.ToString(), " ");
 
-        // 3. eSpeak-ng in piper_phonemize strips '...' and '…' without emitting a period/comma phoneme token,
+        // 3. Expand HH:MM clock times in Vietnamese text ("10:30" -> "10 giờ 30") so eSpeak-ng (vi)
+        //    does not read "10:30" unnaturally as "mười ba mươi". Subtitle .SRT keeps original "10:30".
+        if (ContainsVietnameseDiacritics(cleaned) && cleaned.Contains(':', StringComparison.Ordinal))
+        {
+            cleaned = ClockTimeRegex.Replace(cleaned, m =>
+            {
+                var h = int.Parse(m.Groups["h"].Value, CultureInfo.InvariantCulture);
+                var min = int.Parse(m.Groups["m"].Value, CultureInfo.InvariantCulture);
+                return min == 0 ? $"{h} giờ" : $"{h} giờ {min}";
+            });
+        }
+
+        // 4. eSpeak-ng in piper_phonemize strips '...' and '…' without emitting a period/comma phoneme token,
         //    which causes missing sentence-end cadence or fused words. Convert trailing ellipsis to '.' for Piper.
         cleaned = TrailingEllipsis.Replace(cleaned.Trim(), ".$1");
         cleaned = AnyEllipsis.Replace(cleaned, ",");

@@ -16,28 +16,29 @@ public sealed class JobManager
 
     public async Task<AudioEntry> RenderAsync(string content, VoiceModel voice, double speed,
         int? speakerId, IProgress<(int done, int total)>? progress, CancellationToken ct,
-        bool createSrt = true, bool useCuda = false)
+        bool createSrt = true, bool useCuda = false, string? customTitle = null,
+        Func<int>? extraWorkerAllowance = null)
     {
         if (string.IsNullOrWhiteSpace(content)) throw new InvalidOperationException("Chưa có văn bản cần đọc.");
 
-        var dest = _storage.NewOutputPath();
+        var displayTitle = ResolveDisplayTitle(customTitle, content);
+        var dest = _storage.NewOutputPath(displayTitle);
         var srtDest = Path.ChangeExtension(dest, ".srt");
         ResumableRender.RenderResult? result = null;
         try
         {
             result = await ResumableRender.RunAsync(content, voice, speakerId, speed, createSrt,
-                useCuda, _storage, _paths, _audio, progress, ct);
+                useCuda, _storage, _paths, _audio, progress, ct, extraWorkerAllowance);
             ct.ThrowIfCancellationRequested();
             File.Copy(result.Mp3, dest, overwrite: false);
             if (createSrt && result.Srt is not null) File.Copy(result.Srt, srtDest, overwrite: false);
             var entry = new AudioEntry
             {
-                FilePath = dest, Title = $"Bản đọc {DateTime.Now:dd-MM HH:mm}",
+                FilePath = dest, Title = displayTitle,
                 Type = createSrt ? "Render + SRT" : "Render", Voice = voice.Name,
                 Speed = speed, Language = voice.Language, Characters = content.Length
             };
             _storage.Add(entry);
-            // Clear checkpoint only after final MP3/SRT successfully recorded in library.
             AudioPipeline.SafeDeleteDirectory(result.CheckpointFolder);
             return entry;
         }
@@ -45,9 +46,25 @@ public sealed class JobManager
         {
             if (File.Exists(dest)) File.Delete(dest);
             if (File.Exists(srtDest)) File.Delete(srtDest);
-            // Keep completed checkpoint batches when render cancelled/crashed.
+            if (result is not null) AudioPipeline.SafeDeleteDirectory(result.CheckpointFolder);
             throw;
         }
+    }
+
+    public static string ResolveDisplayTitle(string? customTitle, string content)
+    {
+        if (!string.IsNullOrWhiteSpace(customTitle))
+            return Storage.SafeName(customTitle);
+
+        foreach (var rawLine in content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith("//", StringComparison.Ordinal) || line.StartsWith("[[", StringComparison.Ordinal))
+                continue;
+            if (line.Length > 42) line = line[..42].TrimEnd() + "...";
+            return Storage.SafeName($"{line} ({DateTime.Now:HHmm})");
+        }
+        return $"Bản đọc {DateTime.Now:dd-MM HH:mm:ss}";
     }
 
     /// <summary>

@@ -20,5 +20,6 @@
     <Compile Include="../LangKinhHuKhong.TTS/Core/VoiceCatalog.cs" Link="VoiceCatalog.cs" />
     <Compile Include="../LangKinhHuKhong.TTS/Models/AppModels.cs" Link="AppModels.cs" />
     <Compile Include="../LangKinhHuKhong.TTS/Core/StreamingPcmEncoder.cs" Link="StreamingPcmEncoder.cs" />
+    <Compile Include="../LangKinhHuKhong.TTS/Core/NativeVoicePaths.cs" Link="NativeVoicePaths.cs" />
   </ItemGroup>
 </Project>

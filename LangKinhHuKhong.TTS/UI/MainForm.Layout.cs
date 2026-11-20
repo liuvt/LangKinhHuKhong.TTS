@@ -25,6 +25,7 @@ public sealed partial class MainForm
         content.Controls.Add(BuildFooter(), 0, 2);
 
         RegisterPage("editor", BuildEditorPage());
+        RegisterPage("queue", BuildRenderQueuePage());
         RegisterPage("voices", BuildVoiceLabPage());
         RegisterPage("library", BuildLibraryPage());
         RegisterPage("merge", BuildMergePage());
@@ -107,7 +108,7 @@ public sealed partial class MainForm
         });
         brandCard.Controls.Add(new Label
         {
-            Text = "AUDIO STUDIO v1.2",
+            Text = "AUDIO STUDIO v1.4",
             Bounds = new Rectangle(68, 36, 150, 18),
             ForeColor = Color.FromArgb(148, 163, 184),
             Font = new Font("Segoe UI", 8f, FontStyle.Regular),
@@ -116,7 +117,7 @@ public sealed partial class MainForm
         });
         brandCard.Controls.Add(new Label
         {
-            Text = "● Offline ONNX · PCM 16-bit",
+            Text = "● Multi-Stream · Tray Ready",
             Bounds = new Rectangle(68, 54, 150, 18),
             ForeColor = Color.FromArgb(52, 211, 153),
             Font = new Font("Segoe UI Semibold", 7.75f, FontStyle.Bold),
@@ -130,11 +131,12 @@ public sealed partial class MainForm
         var items = new[]
         {
             ("editor",   "1. Studio Biên tập & TTS"),
-            ("voices",   "2. Danh mục Giọng (Voice Lab)"),
-            ("library",  "3. Thư viện Audio (Outputs)"),
-            ("merge",    "4. Ghép Audio & SRT"),
-            ("settings", "5. Cấu hình & Engine"),
-            ("guide",    "6. Hướng dẫn dùng")
+            ("queue",    "2. Đa luồng Render (0)"),
+            ("voices",   "3. Danh mục Giọng (Voice Lab)"),
+            ("library",  "4. Thư viện Audio (Outputs)"),
+            ("merge",    "5. Ghép Audio & SRT"),
+            ("settings", "6. Cấu hình & Toolbar"),
+            ("guide",    "7. Hướng dẫn dùng")
         };
         var y = 2;
         foreach (var (id, title) in items)
@@ -142,13 +144,13 @@ public sealed partial class MainForm
             var key = id;
             var button = Btn(title, ModernButton.Kind.Ghost, 224);
             button.Location = new Point(0, y);
-            button.Size = new Size(224, 38);
+            button.Size = new Size(224, 36);
             button.TextAlign = ContentAlignment.MiddleLeft;
             button.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             button.Click += (_, _) => ShowPage(key);
             navHost.Controls.Add(button);
             _navigation[key] = button;
-            y += 43;
+            y += 40;
         }
 
         var bottom = new SurfacePanel
@@ -161,7 +163,7 @@ public sealed partial class MainForm
         };
         bottom.Controls.Add(new Label
         {
-            Text = "ELEVEN-STYLE PIPELINE",
+            Text = "MULTI-STREAM ENGINE",
             ForeColor = Color.FromArgb(148, 163, 184),
             Font = new Font("Segoe UI Semibold", 7.75f, FontStyle.Bold),
             BackColor = Color.Transparent,
@@ -170,7 +172,7 @@ public sealed partial class MainForm
         });
         bottom.Controls.Add(new Label
         {
-            Text = "• Persistent Piper Session\n• Smart Batch Hash Cache\n• Review giới hạn từ & Voice Lab\n• 3 thư mục: Runtime/Voices/Output",
+            Text = "• Render song song 1–8 Audio\n• Chạy ngầm ẩn Taskbar ở Tray\n• Clarity Phoneme 44.1kHz 1-Pass\n• Smart Batch Hash Cache",
             ForeColor = Color.FromArgb(226, 232, 240),
             Font = new Font("Segoe UI", 8f),
             BackColor = Color.Transparent,
@@ -191,17 +193,33 @@ public sealed partial class MainForm
         };
         var box = Theme.Table(2, 2);
         box.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        box.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240));
-        box.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        box.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 366));
+        box.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         box.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
         top.Controls.Add(box);
         _headerTitle = Theme.Label("Studio Biên tập & Chuyển văn bản thành giọng nói", 15f, bold: true, color: Theme.Text);
-        _headerSubtitle = Theme.Label("Kiến trúc tương đồng ElevenLabs Studio · Nghe thử giới hạn từ · Quản lý & nghe mẫu toàn bộ Voice.", 8.75f, color: Theme.Muted);
+        _headerSubtitle = Theme.Label("Đa luồng Render song song nhiều Audio · Hỗ trợ ẩn Taskbar chạy ngầm trên Toolbar (Ctrl+M).", 8.75f, color: Theme.Muted);
         box.Controls.Add(_headerTitle, 0, 0);
         box.Controls.Add(_headerSubtitle, 0, 1);
-        var chip = Theme.Label("STUDIO WORKSTATION  ·  v1.2", 8.5f, true, Theme.Blue);
-        chip.TextAlign = ContentAlignment.MiddleRight;
-        box.Controls.Add(chip, 1, 0);
+
+        var headerActions = Theme.Table(2, 1);
+        headerActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 186));
+        headerActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+        box.SetRowSpan(headerActions, 2);
+
+        _headerQueueButton = Btn("⚡ Đa luồng: 0 chạy", ModernButton.Kind.Secondary, 180);
+        _headerQueueButton.Dock = DockStyle.Fill;
+        _headerQueueButton.Margin = new Padding(0, 6, 8, 10);
+        _headerQueueButton.Click += (_, _) => ShowPage("queue");
+
+        _headerHideTrayButton = Btn("▾ Ẩn xuống Toolbar", ModernButton.Kind.Gold, 176);
+        _headerHideTrayButton.Dock = DockStyle.Fill;
+        _headerHideTrayButton.Margin = new Padding(0, 6, 0, 10);
+        _headerHideTrayButton.Click += (_, _) => HideToSystemTray();
+
+        headerActions.Controls.Add(_headerQueueButton, 0, 0);
+        headerActions.Controls.Add(_headerHideTrayButton, 1, 0);
+        box.Controls.Add(headerActions, 1, 0);
         return top;
     }
 
@@ -314,19 +332,22 @@ public sealed partial class MainForm
         }
         (_headerTitle.Text, _headerSubtitle.Text) = id switch
         {
+            "queue" => ("Quản lý Đa luồng Render Song Song (Multi-Stream Render Queue)",
+                "Render đồng thời nhiều bản thu MP3 + SRT trên nhiều tiến trình độc lập, hỗ trợ ẩn xuống Toolbar (System Tray) chạy ngầm."),
             "voices" => ("Danh mục Giọng & Phòng nghe thử (ElevenLabs-Style Voice Lab)",
                 "Nghe thử từng giọng, tạo file mẫu hàng loạt trong Voices/example và đổi tên chuẩn hóa file .onnx + .onnx.json."),
             "library" => ("Thư viện Audio (Output Folder)",
                 "Quản lý các bản thu MP3 + SRT trong thư mục Output, nghe thử, xuất bản sao hoặc chuyển sang ghép chương."),
             "merge" => ("Ghép chuỗi MP3 + Đồng bộ phụ đề SRT",
                 "Tốc độ 1× nối bitstream nguyên gốc (-c:a copy). Đổi tốc độ: giải mã FLAC lossless và mã hóa MP3 một lần duy nhất."),
-            "settings" => ("Cấu hình Đường dẫn & Engine (Runtime / Voices / Output)",
-                "Tự động khởi tạo và liên kết 3 thư mục chuẩn Runtime, Voices, Output đi kèm bộ cài đặt."),
+            "settings" => ("Cấu hình Đường dẫn, Engine & Chế độ Chạy ngầm Toolbar",
+                "Quản lý 3 thư mục chuẩn Runtime, Voices, Output và tùy chọn ẩn khỏi Taskbar về khay hệ thống (System Tray)."),
             "guide" => ("Hướng dẫn sử dụng & Bảng tra cứu Câu lệnh Text",
                 "Tổng hợp toàn bộ các câu lệnh điều khiển trong văn bản, quy tắc dấu câu, Markdown, đặt tên Voice, phím tắt và CLI."),
             _ => ("Studio Biên tập & Chuyển văn bản thành giọng nói",
-                "Soạn thảo kịch bản, nghe thử nhanh đoạn giới hạn từ (Review) và xuất bản thu dài với bộ nhớ đệm từng batch.")
+                "Soạn thảo kịch bản, đẩy liên tiếp nhiều Audio vào Đa luồng Render song song mà không cần chờ xong từng bản.")
         };
+        if (id == "queue") RefreshRenderQueueUi();
         if (id == "voices") RefreshVoiceLabCatalog();
         if (id == "library") RefreshLibrary();
         if (id == "merge") RefreshMergeList();
@@ -369,30 +390,36 @@ public sealed partial class MainForm
         editing.Controls.Add(editorTop, 0, 0);
 
         // Clean responsive toolbar table (no scrollbar overlap)
-        var toolbarGrid = Theme.Table(7, 1);
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118)); // Import
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122)); // Normalize
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));  // Review label
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));  // Limit combo
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108)); // Review btn
+        var toolbarGrid = Theme.Table(8, 1);
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108)); // Import single
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126)); // Batch multi-file render
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114)); // Normalize
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));  // Review label
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));  // Limit combo
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 98));  // Review btn
         toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // Spacer
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 68));  // Clear
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 62));  // Clear
 
-        var import = Btn("⊕ Nhập TXT/MD", ModernButton.Kind.Secondary, 114);
+        var import = Btn("⊕ Nhập TXT", ModernButton.Kind.Secondary, 104);
         import.Dock = DockStyle.Fill;
-        import.Margin = new Padding(0, 3, 6, 3);
+        import.Margin = new Padding(0, 3, 5, 3);
         import.Click += (_, _) => ImportText();
 
-        var normalize = Btn("✓ Chuẩn hóa câu", ModernButton.Kind.Secondary, 118);
+        var batchImport = Btn("⚡ Nhiều file", ModernButton.Kind.Primary, 122);
+        batchImport.Dock = DockStyle.Fill;
+        batchImport.Margin = new Padding(0, 3, 5, 3);
+        batchImport.Click += (_, _) => ImportMultipleFilesToQueue();
+
+        var normalize = Btn("✓ Chuẩn hóa", ModernButton.Kind.Secondary, 110);
         normalize.Dock = DockStyle.Fill;
-        normalize.Margin = new Padding(0, 3, 6, 3);
+        normalize.Margin = new Padding(0, 3, 5, 3);
         normalize.Click += (_, _) => _editor.Text = TextProcessor.NormalizeForTts(_editor.Text);
 
-        var reviewLabel = Theme.Label("Review:", 8.75f, true, Theme.Muted);
+        var reviewLabel = Theme.Label("Review:", 8.5f, true, Theme.Muted);
         reviewLabel.TextAlign = ContentAlignment.MiddleRight;
 
         _reviewLimitCombo = Theme.Combo();
-        _reviewLimitCombo.Margin = new Padding(4, 3, 6, 3);
+        _reviewLimitCombo.Margin = new Padding(4, 3, 5, 3);
         foreach (var limit in new[] { 25, 50, 100, 150, 250, 500 })
             _reviewLimitCombo.Items.Add(new WordLimitOption(limit));
         _reviewLimitCombo.SelectedIndexChanged += (_, _) =>
@@ -406,12 +433,12 @@ public sealed partial class MainForm
             }
         };
 
-        _reviewToolbarButton = Btn("🎧 Nghe thử", ModernButton.Kind.Gold, 104);
+        _reviewToolbarButton = Btn("🎧 Nghe thử", ModernButton.Kind.Gold, 94);
         _reviewToolbarButton.Dock = DockStyle.Fill;
-        _reviewToolbarButton.Margin = new Padding(0, 3, 6, 3);
+        _reviewToolbarButton.Margin = new Padding(0, 3, 5, 3);
         _reviewToolbarButton.Click += async (_, _) => await StartReviewSnippetAsync();
 
-        var clear = Btn("✕ Xóa", ModernButton.Kind.Secondary, 64);
+        var clear = Btn("✕ Xóa", ModernButton.Kind.Secondary, 58);
         clear.Dock = DockStyle.Fill;
         clear.Margin = new Padding(0, 3, 0, 3);
         clear.Click += (_, _) =>
@@ -421,11 +448,12 @@ public sealed partial class MainForm
         };
 
         toolbarGrid.Controls.Add(import, 0, 0);
-        toolbarGrid.Controls.Add(normalize, 1, 0);
-        toolbarGrid.Controls.Add(reviewLabel, 2, 0);
-        toolbarGrid.Controls.Add(_reviewLimitCombo, 3, 0);
-        toolbarGrid.Controls.Add(_reviewToolbarButton, 4, 0);
-        toolbarGrid.Controls.Add(clear, 6, 0);
+        toolbarGrid.Controls.Add(batchImport, 1, 0);
+        toolbarGrid.Controls.Add(normalize, 2, 0);
+        toolbarGrid.Controls.Add(reviewLabel, 3, 0);
+        toolbarGrid.Controls.Add(_reviewLimitCombo, 4, 0);
+        toolbarGrid.Controls.Add(_reviewToolbarButton, 5, 0);
+        toolbarGrid.Controls.Add(clear, 7, 0);
         editing.Controls.Add(toolbarGrid, 0, 1);
 
         _editor = new RichTextBox
@@ -462,7 +490,7 @@ public sealed partial class MainForm
         below.Controls.Add(_wordCount, 0, 0);
         _textWarning = Theme.Label("Không giới hạn độ dài văn bản · Tự động lưu cache theo từng batch 80 câu.", 8.25f, color: Theme.Muted);
         below.Controls.Add(_textWarning, 0, 1);
-        below.Controls.Add(Theme.Label("Phím tắt: Ctrl+O mở tệp · Ctrl+P nghe thử nhanh · Ctrl+Enter xuất MP3 · Ctrl+6 xem bảng lệnh", 8.25f, color: Theme.Muted), 0, 2);
+        below.Controls.Add(Theme.Label("Phím tắt: Ctrl+O mở tệp · Ctrl+Enter thêm vào Đa luồng Render · Ctrl+M ẩn xuống Toolbar · Ctrl+2 mở Bảng Đa luồng", 8.25f, color: Theme.Muted), 0, 2);
         editing.Controls.Add(below, 0, 3);
 
         // Right Column: Compact Responsive ElevenLabs-style Voice & Synthesis Inspector (no clipping!)
@@ -474,21 +502,23 @@ public sealed partial class MainForm
         };
         cols.Controls.Add(right, 1, 0);
 
-        var options = Theme.Table(1, 14);
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));  // 0 Header
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));  // 1 Filter label
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));  // 2 Language + Category row
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));  // 3 Quick search box
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));  // 4 Voice label
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));  // 5 Voice combo
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));  // 6 Quick voice actions (3 equal/percent cols)
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));  // 7 Speaker + Speed + Engine label
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));  // 8 Speaker + Speed + Engine row
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));  // 9 SRT checkbox
-        options.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // 10 Status & progress card
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));  // 11 Review snippet button
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));  // 12 Full Render button
-        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));  // 13 Cancel button
+        var options = Theme.Table(1, 16);
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));  // 0 Header
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 19));  // 1 Filter label
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));  // 2 Language + Category row
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 31));  // 3 Quick search box
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 19));  // 4 Voice label
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));  // 5 Voice combo
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));  // 6 Quick voice actions
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 19));  // 7 Speaker + Speed + Engine label
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));  // 8 Speaker + Speed + Engine row
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 19));  // 9 Title + Parallel threads label
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));  // 10 Title + Parallel threads row
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));  // 11 SRT checkbox
+        options.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // 12 Status & progress card
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));  // 13 Review snippet button
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));  // 14 Enqueue Multi-Render button
+        options.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));  // 15 Queue / Cancel button
         right.Controls.Add(options);
 
         options.Controls.Add(Theme.Label("BẢNG ĐIỀU KHIỂN GIỌNG ĐỌC (VOICE INSPECTOR)", 10f, true), 0, 0);
@@ -576,6 +606,30 @@ public sealed partial class MainForm
         speakerSpeedEngineRow.Controls.Add(_engineCombo, 2, 0);
         options.Controls.Add(speakerSpeedEngineRow, 0, 8);
 
+        options.Controls.Add(Theme.Label("Tên bản thu (tùy chọn)  ·  Số luồng Render song song", 8.25f, color: Theme.Muted), 0, 9);
+        var titleParallelRow = Theme.Table(2, 1);
+        titleParallelRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66));
+        titleParallelRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+
+        _renderTitleInput = Theme.Textbox();
+        _renderTitleInput.PlaceholderText = "Tên Audio (bỏ trống tự lấy dòng đầu)...";
+        _renderTitleInput.Margin = new Padding(0, 2, 5, 2);
+
+        _studioParallelCombo = Theme.Combo();
+        _studioParallelCombo.Margin = new Padding(5, 2, 0, 2);
+        foreach (var n in new[] { 1, 2, 3, 4, 6, 8 })
+            _studioParallelCombo.Items.Add($"{n} luồng song song");
+        _studioParallelCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_syncingParallelCombo || _studioParallelCombo.SelectedItem is not string txt) return;
+            if (int.TryParse(txt.Split(' ')[0], out int count))
+                ApplyParallelConcurrency(count);
+        };
+
+        titleParallelRow.Controls.Add(_renderTitleInput, 0, 0);
+        titleParallelRow.Controls.Add(_studioParallelCombo, 1, 0);
+        options.Controls.Add(titleParallelRow, 0, 10);
+
         _srtOnRender = new CheckBox
         {
             Text = "Xuất kèm phụ đề .SRT chuẩn thời gian thực",
@@ -589,49 +643,169 @@ public sealed partial class MainForm
         _srtOnRender.CheckedChanged += (_, _) =>
         {
             if (_renderButton is not null)
-                _renderButton.Text = _srtOnRender.Checked ? "▶  TẠO BẢN ĐỌC ĐẦY ĐỦ (MP3 + SRT)" : "▶  TẠO BẢN ĐỌC ĐẦY ĐỦ (MP3)";
+                _renderButton.Text = _srtOnRender.Checked
+                    ? "▶  THÊM VÀO ĐA LUỒNG RENDER (MP3 + SRT)"
+                    : "▶  THÊM VÀO ĐA LUỒNG RENDER (MP3)";
         };
-        options.Controls.Add(_srtOnRender, 0, 9);
+        options.Controls.Add(_srtOnRender, 0, 11);
 
         var statusCard = new SurfacePanel
         {
             Dock = DockStyle.Fill,
             Radius = 8,
             BackColor = Theme.Inset,
-            Padding = new Padding(10, 8, 10, 8),
-            Margin = new Padding(0, 4, 0, 6)
+            Padding = new Padding(10, 6, 10, 6),
+            Margin = new Padding(0, 2, 0, 4)
         };
         var statusPanel = Theme.Table(1, 3);
-        statusPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        statusPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        statusPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        statusPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
         statusPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _voiceLanguageHint = Theme.Label("Chọn ngôn ngữ và model ONNX tương ứng.", 8.25f, color: Theme.Muted);
         statusPanel.Controls.Add(_voiceLanguageHint, 0, 0);
-        _renderStatus = Theme.Label("Sẵn sàng xử lý.", 8.5f, true, Theme.Text);
+        _renderStatus = Theme.Label("Sẵn sàng xử lý đa luồng.", 8.5f, true, Theme.Text);
         statusPanel.Controls.Add(_renderStatus, 0, 1);
-        _progress = new ModernProgressBar { Dock = DockStyle.Top, Margin = new Padding(0, 6, 0, 0), BackColor = Theme.Inset };
+        _progress = new ModernProgressBar { Dock = DockStyle.Top, Margin = new Padding(0, 5, 0, 0), BackColor = Theme.Inset };
         statusPanel.Controls.Add(_progress, 0, 2);
         statusCard.Controls.Add(statusPanel);
-        options.Controls.Add(statusCard, 0, 10);
+        options.Controls.Add(statusCard, 0, 12);
 
         _reviewButton = Btn($"🎧  NGHE THỬ ĐOẠN NGẮN ({_storage.Settings.ReviewWordLimit} TỪ)", ModernButton.Kind.Gold);
         _reviewButton.Dock = DockStyle.Fill;
-        _reviewButton.Margin = new Padding(0, 2, 0, 3);
+        _reviewButton.Margin = new Padding(0, 2, 0, 2);
         _reviewButton.Click += async (_, _) => await StartReviewSnippetAsync();
-        options.Controls.Add(_reviewButton, 0, 11);
+        options.Controls.Add(_reviewButton, 0, 13);
 
-        _renderButton = Btn("▶  TẠO BẢN ĐỌC ĐẦY ĐỦ (MP3 + SRT)", ModernButton.Kind.Primary);
+        _renderButton = Btn("▶  THÊM VÀO ĐA LUỒNG RENDER (MP3 + SRT)", ModernButton.Kind.Primary);
         _renderButton.Dock = DockStyle.Fill;
-        _renderButton.Margin = new Padding(0, 2, 0, 3);
-        _renderButton.Click += async (_, _) => await StartRenderAsync();
-        options.Controls.Add(_renderButton, 0, 12);
+        _renderButton.Margin = new Padding(0, 2, 0, 2);
+        _renderButton.Click += (_, _) => EnqueueCurrentEditorRender();
+        options.Controls.Add(_renderButton, 0, 14);
 
-        _cancelButton = Btn("■  Dừng tác vụ đang chạy", ModernButton.Kind.Destructive);
+        var bottomActions = Theme.Table(2, 1);
+        bottomActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        bottomActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+
+        var openQueueBtn = Btn("☷  Xem Bảng Đa Luồng Render", ModernButton.Kind.Secondary);
+        openQueueBtn.Dock = DockStyle.Fill;
+        openQueueBtn.Margin = new Padding(0, 2, 4, 0);
+        openQueueBtn.Click += (_, _) => ShowPage("queue");
+
+        _cancelButton = Btn("■  Dừng tất cả luồng", ModernButton.Kind.Destructive);
         _cancelButton.Dock = DockStyle.Fill;
-        _cancelButton.Margin = new Padding(0, 2, 0, 0);
+        _cancelButton.Margin = new Padding(4, 2, 0, 0);
         _cancelButton.Enabled = false;
-        _cancelButton.Click += (_, _) => _jobCancellation?.Cancel();
-        options.Controls.Add(_cancelButton, 0, 13);
+        _cancelButton.Click += (_, _) =>
+        {
+            _jobCancellation?.Cancel();
+            _renderQueue.CancelAll();
+        };
+
+        bottomActions.Controls.Add(openQueueBtn, 0, 0);
+        bottomActions.Controls.Add(_cancelButton, 1, 0);
+        options.Controls.Add(bottomActions, 0, 15);
+
+        return page;
+    }
+
+    private Control BuildRenderQueuePage()
+    {
+        var page = new Panel { BackColor = Theme.Background, Padding = new Padding(20, 4, 20, 8) };
+        var card = new SurfacePanel { Dock = DockStyle.Fill, Padding = new Padding(16) };
+        page.Controls.Add(card);
+
+        var layout = Theme.Table(1, 4);
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        card.Controls.Add(layout);
+
+        var headerRow = Theme.Table(2, 1);
+        headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        headerRow.Controls.Add(Theme.Label("BẢNG ĐIỀU PHỐI ĐA LUỒNG RENDER SONG SONG (MULTI-AUDIO QUEUE)", 10f, true), 0, 0);
+        _queueSummaryLabel = Theme.Label("0 luồng đang chạy · 0 đang chờ · Sẵn sàng", 9f, true, Theme.Blue);
+        _queueSummaryLabel.TextAlign = ContentAlignment.MiddleRight;
+        headerRow.Controls.Add(_queueSummaryLabel, 1, 0);
+        layout.Controls.Add(headerRow, 0, 0);
+
+        _queueOverallProgress = new ModernProgressBar { Dock = DockStyle.Top, Height = 10, Margin = new Padding(0, 2, 0, 6) };
+        layout.Controls.Add(_queueOverallProgress, 0, 1);
+
+        var actions = Theme.Table(9, 1);
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108)); // Label
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148)); // Parallel combo
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 212)); // Batch import files
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126)); // Play finished
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 134)); // Cancel selected
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126)); // Cancel all
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 142)); // Clear finished
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 152)); // Hide to tray
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var parallelLabel = Theme.Label("Chạy song song:", 8.75f, true, Theme.Text);
+        _queueParallelCombo = Theme.Combo();
+        _queueParallelCombo.Margin = new Padding(0, 3, 8, 3);
+        foreach (var n in new[] { 1, 2, 3, 4, 6, 8 })
+            _queueParallelCombo.Items.Add($"{n} luồng song song");
+        _queueParallelCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_syncingParallelCombo || _queueParallelCombo.SelectedItem is not string txt) return;
+            if (int.TryParse(txt.Split(' ')[0], out int count))
+                ApplyParallelConcurrency(count);
+        };
+
+        var addFilesBtn = Btn("⚡ Chọn nhiều file TXT/MD...", ModernButton.Kind.Primary);
+        addFilesBtn.Dock = DockStyle.Fill;
+        addFilesBtn.Margin = new Padding(0, 3, 6, 3);
+        addFilesBtn.Click += (_, _) => ImportMultipleFilesToQueue();
+
+        var playBtn = Btn("▶ Nghe bản xong", ModernButton.Kind.Gold);
+        playBtn.Dock = DockStyle.Fill;
+        playBtn.Margin = new Padding(0, 3, 6, 3);
+        playBtn.Click += (_, _) => PlaySelectedQueueItem();
+
+        var cancelOneBtn = Btn("■ Hủy luồng chọn", ModernButton.Kind.Secondary);
+        cancelOneBtn.Dock = DockStyle.Fill;
+        cancelOneBtn.Margin = new Padding(0, 3, 6, 3);
+        cancelOneBtn.Click += (_, _) => CancelSelectedQueueItems();
+
+        var cancelAllBtn = Btn("✕ Hủy tất cả", ModernButton.Kind.Destructive);
+        cancelAllBtn.Dock = DockStyle.Fill;
+        cancelAllBtn.Margin = new Padding(0, 3, 6, 3);
+        cancelAllBtn.Click += (_, _) => _renderQueue.CancelAll();
+
+        var clearDoneBtn = Btn("♧ Xóa luồng xong", ModernButton.Kind.Secondary);
+        clearDoneBtn.Dock = DockStyle.Fill;
+        clearDoneBtn.Margin = new Padding(0, 3, 6, 3);
+        clearDoneBtn.Click += (_, _) => _renderQueue.ClearFinished();
+
+        var hideTrayBtn = Btn("▾ Ẩn xuống Toolbar", ModernButton.Kind.Secondary);
+        hideTrayBtn.Dock = DockStyle.Fill;
+        hideTrayBtn.Margin = new Padding(0, 3, 0, 3);
+        hideTrayBtn.Click += (_, _) => HideToSystemTray();
+
+        actions.Controls.Add(parallelLabel, 0, 0);
+        actions.Controls.Add(_queueParallelCombo, 1, 0);
+        actions.Controls.Add(addFilesBtn, 2, 0);
+        actions.Controls.Add(playBtn, 3, 0);
+        actions.Controls.Add(cancelOneBtn, 4, 0);
+        actions.Controls.Add(cancelAllBtn, 5, 0);
+        actions.Controls.Add(clearDoneBtn, 6, 0);
+        actions.Controls.Add(hideTrayBtn, 7, 0);
+        layout.Controls.Add(actions, 0, 2);
+
+        _renderQueueList = NewAudioList(checkBoxes: false);
+        _renderQueueList.Columns.Add("LUỒNG", 78);
+        _renderQueueList.Columns.Add("TÊN AUDIO XUẤT", 290);
+        _renderQueueList.Columns.Add("GIỌNG ĐỌC & CẤU HÌNH", 230);
+        _renderQueueList.Columns.Add("KÝ TỰ", 115);
+        _renderQueueList.Columns.Add("TIẾN ĐỘ", 175);
+        _renderQueueList.Columns.Add("TRẠNG THÁI", 190);
+        _renderQueueList.Columns.Add("THỜI GIAN", 105);
+        _renderQueueList.ItemActivate += (_, _) => PlaySelectedQueueItem();
+        layout.Controls.Add(_renderQueueList, 0, 3);
 
         return page;
     }
@@ -1040,13 +1214,47 @@ public sealed partial class MainForm
         layout.Controls.Add(Theme.Label("3. Thư mục Runtime (Chứa piper/piper.exe và ffmpeg/ffmpeg.exe + ffprobe.exe)", 9f, true), 0, 5);
         _runtimePath = AddFolderBrowser(layout, 6, _storage.Settings.RuntimeFolder, () => "runtime");
 
-        var info = Theme.Table(1, 4);
-        info.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        var info = Theme.Table(1, 6);
+        info.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        info.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        info.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         info.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        info.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        info.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         info.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _dependencies = Theme.Label("Đang kiểm tra trạng thái thành phần...", 9f, true, Theme.Muted);
         info.Controls.Add(_dependencies, 0, 0);
+
+        _minimizeToTrayCheck = new CheckBox
+        {
+            Text = "Khi bấm Thu nhỏ cửa sổ (_) sẽ tự ẩn khỏi Taskbar và hiển thị ở Toolbar (Khay hệ thống / System Tray)",
+            Checked = _storage.Settings.MinimizeToTray,
+            Dock = DockStyle.Fill,
+            ForeColor = Theme.Text,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold)
+        };
+        _minimizeToTrayCheck.CheckedChanged += (_, _) =>
+        {
+            _storage.Settings.MinimizeToTray = _minimizeToTrayCheck.Checked;
+            _storage.SaveSettings();
+        };
+        info.Controls.Add(_minimizeToTrayCheck, 0, 1);
+
+        _closeToTrayCheck = new CheckBox
+        {
+            Text = "Khi đang có luồng Render chạy ngầm mà bấm nút Đóng [X], hỏi ẩn xuống Toolbar thay vì tắt ngang",
+            Checked = _storage.Settings.CloseToTrayWhenBusy,
+            Dock = DockStyle.Fill,
+            ForeColor = Theme.Text,
+            BackColor = Color.Transparent,
+            Font = Theme.Body
+        };
+        _closeToTrayCheck.CheckedChanged += (_, _) =>
+        {
+            _storage.Settings.CloseToTrayWhenBusy = _closeToTrayCheck.Checked;
+            _storage.SaveSettings();
+        };
+        info.Controls.Add(_closeToTrayCheck, 0, 2);
 
         var controls = Theme.Table(5, 1);
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 265));
@@ -1089,11 +1297,11 @@ public sealed partial class MainForm
         controls.Controls.Add(reload, 1, 0);
         controls.Controls.Add(history, 2, 0);
         controls.Controls.Add(appData, 3, 0);
-        info.Controls.Add(controls, 0, 1);
+        info.Controls.Add(controls, 0, 3);
 
         info.Controls.Add(Theme.Label(
-            "Ghi chú: Khi chạy lệnh Publish, hệ thống tự động tạo sẵn 3 thư mục rỗng Runtime, Voices (kèm Voices/example), và Output ngay cạnh file .exe và tự động liên kết cài đặt vào đúng 3 thư mục này.",
-            8.5f, color: Theme.Muted), 0, 2);
+            "Mẹo: Bạn có thể bấm nút '▾ Ẩn xuống Toolbar' ở góc phải trên cùng (hoặc phím tắt Ctrl + M) bất cứ lúc nào để ẩn ứng dụng khỏi Taskbar trong khi hệ thống vẫn tiếp tục chạy Đa luồng Render ngầm.",
+            8.5f, color: Theme.Muted), 0, 4);
         layout.Controls.Add(info, 0, 7);
         return page;
     }
@@ -1231,10 +1439,18 @@ public sealed partial class MainForm
             "Khi bạn đổi tên file .onnx bằng công cụ trong phần mềm, file .mp3 mẫu trong Voices/example cũng tự động đổi tên theo."),
 
         // 5. Phím tắt & Thao tác Studio
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + 1  →  Ctrl + 6", "Chuyển trang nhanh",
-            "Chuyển tức thì giữa 6 phân khu: (1) Studio, (2) Voice Lab, (3) Thư viện Output, (4) Ghép MP3+SRT, (5) Cấu hình, (6) Hướng dẫn dùng.",
+        new("5. Phím tắt & Thao tác Studio", "Ctrl + 1  →  Ctrl + 7", "Chuyển trang nhanh",
+            "Chuyển tức thì giữa 7 phân khu: (1) Studio, (2) Đa luồng Render, (3) Voice Lab, (4) Thư viện Output, (5) Ghép MP3+SRT, (6) Cấu hình, (7) Hướng dẫn.",
             "",
             "Hoạt động ở mọi vị trí trong cửa sổ ứng dụng."),
+        new("5. Phím tắt & Thao tác Studio", "Ctrl + M  (hoặc nút ▾ Ẩn xuống Toolbar)", "Ẩn Taskbar xuống Khay hệ thống",
+            "Ẩn hoàn toàn cửa sổ khỏi thanh Taskbar Windows, chỉ hiển thị biểu tượng ở Toolbar (System Tray) và báo thông báo khi render xong.",
+            "",
+            "Nhấp chuột trái hoặc nhấp đúp vào biểu tượng trên Toolbar để mở lại cửa sổ bất cứ lúc nào."),
+        new("5. Phím tắt & Thao tác Studio", "Ctrl + Enter  /  Nút ⚡ Nhiều file", "Đa luồng Render song song (1–8 Audio)",
+            "Đẩy văn bản hiện tại hoặc hàng loạt file .TXT/.MD vào hàng đợi Đa luồng Render song song mà không khóa màn hình soạn thảo.",
+            "",
+            "Có thể chọn từ 1 đến 8 luồng chạy đồng thời; đang render chương 1 vẫn soạn và bấm render tiếp chương 2, 3, 4 song song."),
         new("5. Phím tắt & Thao tác Studio", "Ctrl + O", "Nhập tệp .TXT / .MD",
             "Mở hộp thoại chọn tệp văn bản (.txt hoặc .md) và tự động chuẩn hóa dấu câu đưa vào trình biên tập.",
             "",
@@ -1243,10 +1459,6 @@ public sealed partial class MainForm
             "Nghe thử nhanh theo giới hạn số từ đã chọn (25 / 50 / 100 / 150 / 250 / 500 từ). Nếu đang bôi đen văn bản thì ưu tiên đọc đoạn bôi đen.",
             "",
             "Bản nghe thử phát ngay trên thanh Player đáy màn hình và không làm rác thư mục Output."),
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + Enter", "Xuất MP3 + SRT đầy đủ",
-            "Bắt đầu tiến trình Render toàn bộ văn bản sang MP3 (và SRT nếu tích chọn), lưu vào thư mục Output.",
-            "",
-            "Hỗ trợ Resume/Cache thông minh theo từng batch 80 câu."),
 
         // 6. Lệnh CLI / PowerShell
         new("6. Lệnh CLI / PowerShell", "BUILD-VA-CHAY.cmd", "Đóng gói & Chạy ngay",

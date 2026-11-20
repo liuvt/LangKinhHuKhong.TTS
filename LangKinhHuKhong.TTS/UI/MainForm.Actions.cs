@@ -19,12 +19,12 @@ public sealed partial class MainForm
         _wordCount.Text = $"{len:N0} ký tự · đang tính số từ...";
         _wordTimer.Stop();
         _wordTimer.Start();
-        _textWarning.Text = "Không giới hạn ký tự · Tự động băm cache theo từng batch 80 câu · Chọn từ để nghe thử nhanh.";
+        _textWarning.Text = "Hỗ trợ Đa luồng Render song song nhiều Audio · Có thể ẩn cửa sổ xuống Toolbar (Ctrl+M) khi chạy dài.";
         _textWarning.ForeColor = Theme.Muted;
-        bool canRun = !_busy && _voiceCombo?.SelectedItem is VoiceModel && len > 0;
-        if (_renderButton is not null) _renderButton.Enabled = canRun;
-        if (_reviewButton is not null) _reviewButton.Enabled = canRun;
-        if (_reviewToolbarButton is not null) _reviewToolbarButton.Enabled = canRun;
+        bool hasVoiceAndText = _voiceCombo?.SelectedItem is VoiceModel && len > 0;
+        if (_renderButton is not null) _renderButton.Enabled = hasVoiceAndText;
+        if (_reviewButton is not null) _reviewButton.Enabled = !_busy && hasVoiceAndText;
+        if (_reviewToolbarButton is not null) _reviewToolbarButton.Enabled = !_busy && hasVoiceAndText;
     }
 
     private void ImportText()
@@ -56,10 +56,62 @@ public sealed partial class MainForm
                 if (confirm != DialogResult.Yes) return;
             }
             _editor.Text = text;
+            if (_renderTitleInput is not null)
+                _renderTitleInput.Text = Path.GetFileNameWithoutExtension(file);
             ShowPage("editor");
             SetStatus($"Đã nhập {Path.GetFileName(file)} ({text.Length:N0} ký tự).", Theme.Green);
         }
         catch (Exception ex) { ShowError(ex, "Không thể nhập văn bản."); }
+    }
+
+    private void ImportMultipleFilesToQueue()
+    {
+        if (_voiceCombo.SelectedItem is not VoiceModel voice)
+        {
+            MessageBox.Show("Hãy chọn một model giọng đọc trong Studio trước khi nạp nhiều file chạy song song.",
+                "Chưa chọn giọng đọc", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var speed = (_speedCombo.SelectedItem as SpeedOption)?.Value ?? 1.0;
+        var speaker = _speakerCombo.SelectedItem is VoiceSpeaker s ? s.Id : (int?)null;
+        bool createSrt = _srtOnRender.Checked;
+        bool useCuda = _engineCombo.SelectedIndex == 1;
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = $"Chọn nhiều tệp .TXT / .MD để Render song song ({_renderQueue.MaxConcurrency} luồng) bằng giọng '{voice.Name}'",
+            Filter = "Văn bản (*.txt;*.md)|*.txt;*.md|TXT (*.txt)|*.txt|Markdown (*.md)|*.md",
+            CheckFileExists = true,
+            Multiselect = true
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.FileNames.Length == 0) return;
+
+        int added = 0;
+        foreach (var file in dialog.FileNames)
+        {
+            try
+            {
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (ext is not ".txt" and not ".md") continue;
+                using var reader = new StreamReader(file, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true);
+                var raw = reader.ReadToEnd();
+                var text = TextProcessor.FromImportedFile(raw, ext == ".md");
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                var title = Path.GetFileNameWithoutExtension(file);
+                _renderQueue.Enqueue(text, voice, speed, speaker, createSrt, useCuda, title);
+                added++;
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex, $"Lỗi đọc tệp {Path.GetFileName(file)}");
+            }
+        }
+
+        if (added > 0)
+        {
+            ShowPage("queue");
+            SetStatus($"⚡ Đã nạp {added} tệp vào Đa luồng Render (chạy song song tối đa {_renderQueue.MaxConcurrency} luồng).", Theme.Green);
+        }
     }
 
     private void ReloadVoices()
@@ -207,10 +259,10 @@ public sealed partial class MainForm
         }
         if (_speakerCombo.Items.Count > 0) _speakerCombo.SelectedIndex = 0;
 
+        bool hasText = _editor.TextLength > 0;
+        if (_renderButton is not null) _renderButton.Enabled = hasText;
         if (!_busy)
         {
-            bool hasText = _editor.TextLength > 0;
-            if (_renderButton is not null) _renderButton.Enabled = hasText;
             if (_reviewButton is not null) _reviewButton.Enabled = hasText;
             if (_reviewToolbarButton is not null) _reviewToolbarButton.Enabled = hasText;
             if (_previewVoiceButton is not null) _previewVoiceButton.Enabled = true;
@@ -557,15 +609,15 @@ public sealed partial class MainForm
     private void SetBusy(bool busy, string status)
     {
         _busy = busy;
-        bool canRun = !busy && _voiceCombo.SelectedItem is VoiceModel && _editor.TextLength > 0;
-        _renderButton.Enabled = canRun;
-        _reviewButton.Enabled = canRun;
-        _reviewToolbarButton.Enabled = canRun;
+        bool hasVoiceAndText = _voiceCombo.SelectedItem is VoiceModel && _editor.TextLength > 0;
+        _renderButton.Enabled = hasVoiceAndText; // Multi-render queue stays unlocked!
+        _reviewButton.Enabled = !busy && hasVoiceAndText;
+        _reviewToolbarButton.Enabled = !busy && hasVoiceAndText;
         if (_previewVoiceButton is not null) _previewVoiceButton.Enabled = !busy && _voiceCombo.SelectedItem is VoiceModel;
         if (_renameVoiceQuickButton is not null) _renameVoiceQuickButton.Enabled = !busy && _voiceCombo.SelectedItem is VoiceModel;
         if (_renderAllExamplesButton is not null) _renderAllExamplesButton.Enabled = !busy;
         _mergeButton.Enabled = !busy;
-        _cancelButton.Enabled = busy;
+        _cancelButton.Enabled = busy || _renderQueue.ActiveCount > 0;
         _renderStatus.Text = status;
         _renderStatus.ForeColor = busy ? Theme.Blue : Theme.Muted;
         if (busy)
@@ -573,11 +625,15 @@ public sealed partial class MainForm
             _footerStatus.Text = status;
             _footerStatus.ForeColor = Theme.Blue;
         }
+        else
+        {
+            RefreshRenderQueueUi();
+        }
     }
 
     private async Task StartReviewSnippetAsync()
     {
-        if (_busy) { SetStatus("Đang chạy tác vụ khác. Có thể chờ hoặc bấm Dừng.", Theme.Gold); return; }
+        if (_busy) { SetStatus("Đang chạy tác vụ nghe thử/ghép. Hãy chờ hoặc bấm Dừng.", Theme.Gold); return; }
         if (_voiceCombo.SelectedItem is not VoiceModel voice)
         { MessageBox.Show("Chưa có model giọng đọc. Hãy thêm model vào thư mục Voices."); return; }
         if (_speedCombo.SelectedItem is not SpeedOption selectedSpeed) return;
@@ -627,9 +683,8 @@ public sealed partial class MainForm
         }
     }
 
-    private async Task StartRenderAsync()
+    private void EnqueueCurrentEditorRender()
     {
-        if (_busy) { SetStatus("Đang chạy tác vụ khác. Có thể chờ hoặc bấm Dừng.", Theme.Gold); return; }
         if (_voiceCombo.SelectedItem is not VoiceModel voice)
         { MessageBox.Show("Chưa có model giọng đọc. Hãy sao chép Voices hoặc chọn đường dẫn trong Cấu hình."); return; }
         if (_speedCombo.SelectedItem is not SpeedOption selectedSpeed) return;
@@ -640,39 +695,261 @@ public sealed partial class MainForm
                 "Không tìm thấy thông tin ngôn ngữ trong JSON của ONNX này.\n" +
                 "Nếu model không hỗ trợ văn bản đang nhập, giọng đọc sẽ bị lỗi phát âm. Tiếp tục?",
                 "Cảnh báo ngôn ngữ model", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+
         var text = _editor.Text;
         if (string.IsNullOrWhiteSpace(text))
-        { MessageBox.Show("Nhập nội dung trước khi tạo MP3."); return; }
+        { MessageBox.Show("Nhập nội dung trước khi thêm vào Đa luồng Render."); return; }
+
         var speaker = _speakerCombo.SelectedItem is VoiceSpeaker s ? s.Id : (int?)null;
-        _jobCancellation = new CancellationTokenSource();
-        var token = _jobCancellation.Token;
-        SetBusy(true, "Đang chuẩn bị xử lý...");
-        _progress.Percent = 0;
-        var progress = new Progress<(int done, int total)>(p =>
-        {
-            if (_closing || IsDisposed) return;
-            _progress.Percent = (int)(p.done * 100d / Math.Max(p.total, 1));
-            _renderStatus.Text = $"Đã xử lý {p.done:N0} / {p.total:N0} bước";
-            _footerStatus.Text = $"Đang render {p.done:N0}/{p.total:N0} – {voice.Name} ({VoiceLanguage.DisplayName(voice.Language)})";
-        });
+        var customTitle = _renderTitleInput?.Text.Trim();
+
         try
         {
-            var result = await _jobs.RenderAsync(text, voice, selectedSpeed.Value, speaker, progress, token, _srtOnRender.Checked, _engineCombo.SelectedIndex == 1);
-            if (_closing) return;
-            _progress.Percent = 100;
-            RefreshLibrary();
-            RefreshMergeList();
-            SetStatus($"Đã tạo {(_srtOnRender.Checked ? "MP3 + SRT" : "MP3")} trong Output: {result.Title} · ID {result.Id[..8]}", Theme.Green);
-            ShowPage("library");
+            var queued = _renderQueue.Enqueue(
+                text,
+                voice,
+                selectedSpeed.Value,
+                speaker,
+                _srtOnRender.Checked,
+                _engineCombo.SelectedIndex == 1,
+                customTitle);
+
+            if (_renderTitleInput is not null) _renderTitleInput.Clear();
+            var (running, waiting, _, _, _) = _renderQueue.GetSummary();
+            SetStatus(
+                $"⚡ Đã thêm luồng #{queued.SequenceNumber:00} '{queued.Title}' ({voice.Name} · {selectedSpeed.Value:0.##}×) — Đang chạy song song {running} luồng, chờ {waiting}. Bạn có thể nhập tiếp bài khác ngay!",
+                Theme.Green);
         }
-        catch (OperationCanceledException) { SetStatus("Đã hủy lượt render (các batch hoàn tất được giữ trong cache).", Theme.Gold); }
-        catch (Exception ex) { if (!_closing) ShowError(ex, "Render MP3 thất bại."); SetStatus(ex.Message, Theme.Danger); }
-        finally
+        catch (Exception ex)
         {
-            _jobCancellation?.Dispose();
-            _jobCancellation = null;
-            if (!_closing) SetBusy(false, "Sẵn sàng xử lý lượt tiếp theo.");
+            ShowError(ex, "Không thể thêm tác vụ vào Đa luồng Render.");
         }
+    }
+
+    private void SyncParallelCombos(int count)
+    {
+        int clamped = Math.Clamp(count, 1, 8);
+        int[] options = [1, 2, 3, 4, 6, 8];
+        int best = options.OrderBy(x => Math.Abs(x - clamped)).First();
+        string label = $"{best} luồng song song";
+
+        _syncingParallelCombo = true;
+        try
+        {
+            if (_studioParallelCombo is not null && _studioParallelCombo.Items.Contains(label))
+                _studioParallelCombo.SelectedItem = label;
+            if (_queueParallelCombo is not null && _queueParallelCombo.Items.Contains(label))
+                _queueParallelCombo.SelectedItem = label;
+        }
+        finally { _syncingParallelCombo = false; }
+    }
+
+    private void ApplyParallelConcurrency(int count)
+    {
+        int clamped = Math.Clamp(count, 1, 8);
+        _storage.Settings.MaxParallelRenders = clamped;
+        _storage.SaveSettings();
+        _renderQueue.SetMaxConcurrency(clamped);
+        SyncParallelCombos(clamped);
+        SetStatus($"Đã đặt số luồng Render chạy song song tối đa: {clamped} luồng.", Theme.Green);
+    }
+
+    private void OnQueuedJobCompleted(RenderJobSnapshot snap, AudioEntry entry)
+    {
+        RefreshLibrary();
+        RefreshMergeList();
+        RefreshRenderQueueUi();
+        SetStatus($"✓ Hoàn tất luồng #{snap.SequenceNumber:00}: {entry.Title} ({entry.Voice} · {entry.Speed:0.##}×)", Theme.Green);
+        if (!Visible && _trayIcon is not null)
+        {
+            var (running, queued, _, _, _) = _renderQueue.GetSummary();
+            string rest = running + queued > 0 ? $" · Còn {running + queued} luồng đang xử lý." : " · Tất cả luồng đã hoàn tất!";
+            _trayIcon.ShowBalloonTip(2500, "Render Audio Hoàn Tất ✓", $"{entry.Title} ({entry.Voice}){rest}", ToolTipIcon.Info);
+        }
+    }
+
+    private void OnQueuedJobFailed(RenderJobSnapshot snap, string error)
+    {
+        RefreshRenderQueueUi();
+        SetStatus($"✕ Lỗi luồng #{snap.SequenceNumber:00} ({snap.Title}): {error}", Theme.Danger);
+        if (!Visible && _trayIcon is not null)
+        {
+            _trayIcon.ShowBalloonTip(3000, $"Lỗi luồng #{snap.SequenceNumber:00}", $"{snap.Title}: {error}", ToolTipIcon.Error);
+        }
+    }
+
+    private void RefreshRenderQueueUi()
+    {
+        if (_closing || IsDisposed) return;
+        var (running, queued, completed, total, avgPct) = _renderQueue.GetSummary();
+        int active = running + queued;
+
+        // 1. Sidebar badge & Header badge
+        if (_navigation.TryGetValue("queue", out var navBtn))
+        {
+            navBtn.Text = active > 0
+                ? $"2. Đa luồng Render ({running} chạy{(queued > 0 ? $"+{queued}" : "")})"
+                : $"2. Đa luồng Render ({total})";
+            navBtn.Invalidate();
+        }
+        if (_headerQueueButton is not null)
+        {
+            _headerQueueButton.Text = active > 0
+                ? $"⚡ Đa luồng: {running} chạy ({avgPct}%)"
+                : $"⚡ Đa luồng: {completed} xong";
+            _headerQueueButton.Style = active > 0 ? ModernButton.Kind.Primary : ModernButton.Kind.Secondary;
+            _headerQueueButton.Invalidate();
+        }
+
+        // 2. Studio Inspector progress & Cancel button (when not running foreground review)
+        if (!_busy)
+        {
+            if (_cancelButton is not null) _cancelButton.Enabled = active > 0;
+            if (_renderStatus is not null && _progress is not null)
+            {
+                if (active > 0)
+                {
+                    _renderStatus.Text = $"⚡ Đang render song song {running}/{_renderQueue.MaxConcurrency} luồng (chờ: {queued} · xong: {completed}) — {avgPct}%";
+                    _renderStatus.ForeColor = Theme.Blue;
+                    _progress.Percent = avgPct;
+                }
+                else
+                {
+                    _renderStatus.Text = completed > 0
+                        ? $"✓ Đã hoàn tất {completed} bản thu · Sẵn sàng thêm luồng mới."
+                        : "Sẵn sàng xử lý đa luồng.";
+                    _renderStatus.ForeColor = completed > 0 ? Theme.Green : Theme.Muted;
+                    _progress.Percent = completed > 0 ? 100 : 0;
+                }
+            }
+        }
+
+        // 3. System Tray tooltip & context menu
+        if (_trayIcon is not null)
+        {
+            string tip = active > 0
+                ? $"Lăng Kính Hư Không TTS · Đang chạy {running} luồng, chờ {queued} ({avgPct}%)"
+                : "Lăng Kính Hư Không TTS · Sẵn sàng";
+            // NotifyIcon.Text limit on Windows is 63 chars on classic APIs
+            _trayIcon.Text = tip.Length > 63 ? tip[..63] : tip;
+        }
+        if (_trayQueueStatusItem is not null)
+        {
+            _trayQueueStatusItem.Text = active > 0
+                ? $"⚡  Đang chạy {running} luồng, chờ {queued} ({avgPct}%) — Bấm để xem"
+                : $"⚡  Đa luồng Render: Sẵn sàng ({completed} đã xong)";
+        }
+        if (_trayCancelAllItem is not null)
+            _trayCancelAllItem.Enabled = active > 0;
+
+        // 4. Queue Dashboard Page controls
+        if (_queueSummaryLabel is not null)
+        {
+            _queueSummaryLabel.Text = active > 0
+                ? $"⚡ Đang chạy {running}/{_renderQueue.MaxConcurrency} luồng song song · Chờ: {queued} · Hoàn tất: {completed}"
+                : $"Sẵn sàng (Tối đa {_renderQueue.MaxConcurrency} luồng song song) · Đã hoàn tất: {completed}/{total}";
+            _queueSummaryLabel.ForeColor = active > 0 ? Theme.Blue : Theme.Green;
+        }
+        if (_queueOverallProgress is not null)
+            _queueOverallProgress.Percent = active > 0 ? avgPct : (completed > 0 ? 100 : 0);
+
+        if (_renderQueueList is null) return;
+        var items = _renderQueue.Snapshot();
+        var selectedIds = _renderQueueList.SelectedItems.Cast<ListViewItem>()
+            .Select(x => (x.Tag as RenderJobSnapshot)?.Id).Where(x => x is not null).ToHashSet();
+
+        _renderQueueList.BeginUpdate();
+        try
+        {
+            while (_renderQueueList.Items.Count > items.Count)
+                _renderQueueList.Items.RemoveAt(_renderQueueList.Items.Count - 1);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var s = items[i];
+                string seqText = $"#{s.SequenceNumber:00}";
+                string cfgText = $"{s.VoiceName} · {s.Speed:0.##}× · {(s.CreateSrt ? "+SRT" : "MP3")}";
+                string charText = $"{s.Characters:N0}";
+                string progText = s.State switch
+                {
+                    RenderJobState.Completed => "100% (Hoàn tất)",
+                    RenderJobState.Queued => "0% (Chờ luồng)",
+                    RenderJobState.Running => s.TotalSteps > 0 ? $"{s.Percent}% ({s.DoneSteps:N0}/{s.TotalSteps:N0})" : $"{s.Percent}% (Khởi tạo...)",
+                    RenderJobState.Canceled => $"{s.Percent}% (Đã dừng)",
+                    _ => "Lỗi"
+                };
+                string stateText = s.State switch
+                {
+                    RenderJobState.Running => "⚡ Đang render...",
+                    RenderJobState.Queued => "⏳ Đang chờ luồng",
+                    RenderJobState.Completed => "✓ Hoàn tất (▶ Nghe)",
+                    RenderJobState.Canceled => "⊘ Đã hủy",
+                    _ => "✕ Lỗi: " + (s.ErrorMessage ?? "")
+                };
+                string elapsedText = s.Elapsed.TotalHours >= 1
+                    ? s.Elapsed.ToString(@"hh\:mm\:ss")
+                    : s.Elapsed.ToString(@"mm\:ss");
+
+                if (i < _renderQueueList.Items.Count)
+                {
+                    var row = _renderQueueList.Items[i];
+                    row.Tag = s;
+                    if (row.Text != seqText) row.Text = seqText;
+                    if (row.SubItems[1].Text != s.Title) row.SubItems[1].Text = s.Title;
+                    if (row.SubItems[2].Text != cfgText) row.SubItems[2].Text = cfgText;
+                    if (row.SubItems[3].Text != charText) row.SubItems[3].Text = charText;
+                    if (row.SubItems[4].Text != progText) row.SubItems[4].Text = progText;
+                    if (row.SubItems[5].Text != stateText) row.SubItems[5].Text = stateText;
+                    if (row.SubItems[6].Text != elapsedText) row.SubItems[6].Text = elapsedText;
+                    row.Selected = selectedIds.Contains(s.Id);
+                }
+                else
+                {
+                    var row = new ListViewItem(seqText) { Tag = s };
+                    row.SubItems.Add(s.Title);
+                    row.SubItems.Add(cfgText);
+                    row.SubItems.Add(charText);
+                    row.SubItems.Add(progText);
+                    row.SubItems.Add(stateText);
+                    row.SubItems.Add(elapsedText);
+                    if (selectedIds.Contains(s.Id)) row.Selected = true;
+                    _renderQueueList.Items.Add(row);
+                }
+            }
+        }
+        finally { _renderQueueList.EndUpdate(); }
+    }
+
+    private void PlaySelectedQueueItem()
+    {
+        if (_renderQueueList?.SelectedItems.Count == 0)
+        {
+            SetStatus("Chọn một luồng đã hoàn tất (✓) để nghe.", Theme.Gold);
+            return;
+        }
+        if (_renderQueueList!.SelectedItems[0].Tag is not RenderJobSnapshot snap) return;
+        if (snap.State != RenderJobState.Completed || string.IsNullOrWhiteSpace(snap.OutputMp3Path) || !File.Exists(snap.OutputMp3Path))
+        {
+            SetStatus($"Luồng #{snap.SequenceNumber:00} chưa hoàn tất hoặc file MP3 không còn tồn tại.", Theme.Gold);
+            return;
+        }
+        PlayAudioFile(snap.OutputMp3Path, $"[Luồng #{snap.SequenceNumber:00}] {snap.Title}");
+    }
+
+    private void CancelSelectedQueueItems()
+    {
+        if (_renderQueueList?.SelectedItems.Count == 0)
+        {
+            SetStatus("Chọn ít nhất một luồng đang chạy hoặc đang chờ để hủy.", Theme.Gold);
+            return;
+        }
+        int count = 0;
+        foreach (ListViewItem item in _renderQueueList!.SelectedItems)
+        {
+            if (item.Tag is RenderJobSnapshot snap && _renderQueue.CancelJob(snap.Id))
+                count++;
+        }
+        if (count > 0) SetStatus($"Đã gửi lệnh dừng {count} luồng render.", Theme.Gold);
     }
 
     private void RefreshLibrary()
@@ -737,6 +1014,11 @@ public sealed partial class MainForm
         {
             if (_player.CurrentFile is null)
             {
+                if (_activePage == "queue")
+                {
+                    PlaySelectedQueueItem();
+                    return;
+                }
                 if (_activePage == "voices")
                 {
                     _ = PlayOrGenerateSelectedVoiceLabExampleAsync(forceRegenerate: false);

@@ -19,6 +19,8 @@ public sealed class AudioPipeline
         if (!File.Exists(PiperExe)) throw new FileNotFoundException("Thiếu Runtime/piper/piper.exe (và các DLL đi kèm).", PiperExe);
         ValidateSpeaker(voice, speakerId);
         var (model, config) = _paths.Prepare(voice);
+        var syn = PersistentPiperSession.ReadSynthesisParams(config);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         var info = new ProcessStartInfo(PiperExe)
         {
             WorkingDirectory = Path.GetDirectoryName(PiperExe)!,
@@ -26,9 +28,16 @@ public sealed class AudioPipeline
             RedirectStandardInput = true, RedirectStandardError = true,
             StandardInputEncoding = new System.Text.UTF8Encoding(false)
         };
-        // Deliberately omit --length_scale: model default 1.0 at EVERY selected output speed.
-        AddArgs(info, "--model", model, "--config", config, "--output_file", wav);
+        AddArgs(info,
+            "--model", model,
+            "--config", config,
+            "--noise_scale", syn.NoiseScale.ToString("0.###", inv),
+            "--length_scale", syn.LengthScale.ToString("0.###", inv),
+            "--noise_w", syn.NoiseW.ToString("0.###", inv),
+            "--sentence_silence", "0.12",
+            "--output_file", wav);
         if (speakerId.HasValue) AddArgs(info, "--speaker", speakerId.Value.ToString());
+        var preparedText = SpeechPacing.PrepareTextForPiper(text);
         using var process = Process.Start(info) ?? throw new InvalidOperationException("Không chạy được Piper.");
         try
         {
@@ -36,7 +45,7 @@ public sealed class AudioPipeline
             Exception? writeIssue = null;
             try
             {
-                await process.StandardInput.WriteAsync(text.AsMemory(), ct);
+                await process.StandardInput.WriteAsync(preparedText.AsMemory(), ct);
                 await process.StandardInput.WriteLineAsync();
                 await process.StandardInput.FlushAsync(ct);
             }
