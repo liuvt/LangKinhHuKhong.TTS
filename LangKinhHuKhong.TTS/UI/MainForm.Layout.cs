@@ -1681,13 +1681,22 @@ public sealed partial class MainForm
         {
             string[] candidates =
             [
-                Path.Combine(AppContext.BaseDirectory, "DNA_LANG_KINH_HU_KHONG_TTS.md"),
-                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "DNA_LANG_KINH_HU_KHONG_TTS.md"))
+                Path.Combine(AppContext.BaseDirectory, "README.md"),
+                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "README.md"))
             ];
             var found = candidates.FirstOrDefault(File.Exists);
-            var textToCopy = found is not null ? File.ReadAllText(found, System.Text.Encoding.UTF8) : BuildFullManualText();
+            string textToCopy = BuildFullManualText();
+            if (found is not null)
+            {
+                var raw = File.ReadAllText(found, System.Text.Encoding.UTF8);
+                int start = raw.IndexOf("<!-- DNA_START -->", StringComparison.Ordinal);
+                int end = raw.IndexOf("<!-- DNA_END -->", StringComparison.Ordinal);
+                textToCopy = start >= 0 && end > start
+                    ? raw[(start + "<!-- DNA_START -->".Length)..end].Trim()
+                    : raw;
+            }
             Clipboard.SetText(textToCopy);
-            SetStatus("Đã sao chép toàn bộ nội dung DNA_LANG_KINH_HU_KHONG_TTS.md vào Clipboard để dán cho ChatGPT/AI!", Theme.Green);
+            SetStatus("Đã sao chép toàn bộ chuẩn DNA đào tạo AI từ README.md vào Clipboard!", Theme.Green);
         };
 
         actionBar.Controls.Add(insertCmdBtn, 0, 0);

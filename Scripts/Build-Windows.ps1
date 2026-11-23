@@ -39,11 +39,6 @@ if ($LASTEXITCODE -ne 0) { throw "Publish failed ($LASTEXITCODE)" }
 $exe = Join-Path $publish 'LangKinhHuKhong.TTS.exe'
 if (-not (Test-Path $exe)) { throw "Khong tim thay file: $exe" }
 
-$dnaSource = Join-Path $root 'DNA_LANG_KINH_HU_KHONG_TTS.md'
-if (Test-Path $dnaSource) {
-    Copy-Item -Path $dnaSource -Destination (Join-Path $publish 'DNA_LANG_KINH_HU_KHONG_TTS.md') -Force
-}
-
 # Create the 3 required folders (Runtime, Voices, Output) + subfolders in Publish\$Runtime
 $pubRuntime = Join-Path $publish 'Runtime'
 $pubVoices  = Join-Path $publish 'Voices'
