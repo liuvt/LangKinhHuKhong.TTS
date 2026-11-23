@@ -15,11 +15,11 @@ public sealed partial class MainForm
         if (_editor is null || _charCount is null) return;
         var len = _editor.TextLength;
         _charCount.Text = $"{len:N0} ký tự";
-        _charCount.ForeColor = Theme.Blue;
+        _charCount.ForeColor = Theme.AccentText;
         _wordCount.Text = $"{len:N0} ký tự · đang tính số từ...";
         _wordTimer.Stop();
         _wordTimer.Start();
-        _textWarning.Text = "Hỗ trợ Đa luồng Render song song nhiều Audio · Có thể ẩn cửa sổ xuống Toolbar (Ctrl+M) khi chạy dài.";
+        _textWarning.Text = "Ctrl+O mở tệp · Ctrl+Enter thêm vào Đa luồng Render bên dưới · Ctrl+M ẩn xuống Toolbar · Ctrl+1..4 chuyển mục";
         _textWarning.ForeColor = Theme.Muted;
         bool hasVoiceAndText = _voiceCombo?.SelectedItem is VoiceModel && len > 0;
         if (_renderButton is not null) _renderButton.Enabled = hasVoiceAndText;
@@ -79,7 +79,7 @@ public sealed partial class MainForm
 
         using var dialog = new OpenFileDialog
         {
-            Title = $"Chọn nhiều tệp .TXT / .MD để Render song song ({_renderQueue.MaxConcurrency} luồng) bằng giọng '{voice.Name}'",
+            Title = $"Chọn nhiều tệp .TXT / .MD để Render song song ({_renderQueue.ModeDisplayLabel}) bằng giọng '{voice.Name}'",
             Filter = "Văn bản (*.txt;*.md)|*.txt;*.md|TXT (*.txt)|*.txt|Markdown (*.md)|*.md",
             CheckFileExists = true,
             Multiselect = true
@@ -109,8 +109,8 @@ public sealed partial class MainForm
 
         if (added > 0)
         {
-            ShowPage("queue");
-            SetStatus($"⚡ Đã nạp {added} tệp vào Đa luồng Render (chạy song song tối đa {_renderQueue.MaxConcurrency} luồng).", Theme.Green);
+            ShowPage("editor");
+            SetStatus($"⚡ Đã nạp {added} tệp vào Đa luồng Render ({_renderQueue.ModeDisplayLabel}).", Theme.Green);
         }
     }
 
@@ -160,9 +160,9 @@ public sealed partial class MainForm
         RefreshDependencies();
 
         if (_voices.Count == 0)
-            SetStatus("Chưa có model .onnx/.onnx.json trong thư mục Voices. Hãy chép model vào thư mục Voices.", Theme.Gold);
+            SetStatus("Chưa có model .onnx/.onnx.json trong thư mục Voices. Hãy chép model vào thư mục Voices.", Theme.GoldText);
         else
-            SetStatus($"Đã nạp {_voices.Count} model giọng · Sẵn sàng trong Studio và Voice Lab.", Theme.Green);
+            SetStatus($"Đã nạp {_voices.Count} model giọng · Sẵn sàng trong Biên tập và Danh sách giọng.", Theme.Green);
 
         foreach (var item in _speedCombo.Items)
             if (item is SpeedOption speed && speed.Value == _storage.Settings.Speed)
@@ -230,7 +230,7 @@ public sealed partial class MainForm
             _speakerCombo.Enabled = false;
             var language = (_languageCombo.SelectedItem as VoiceLanguage.LanguageChoice)?.Code;
             _voiceLanguageHint.Text = $"Chưa có giọng phù hợp ({VoiceLanguage.DisplayName(language)}). Hãy thêm model vào thư mục Voices.";
-            _voiceLanguageHint.ForeColor = Theme.Gold;
+            _voiceLanguageHint.ForeColor = Theme.GoldText;
             if (_renderButton is not null) _renderButton.Enabled = false;
             if (_reviewButton is not null) _reviewButton.Enabled = false;
             if (_reviewToolbarButton is not null) _reviewToolbarButton.Enabled = false;
@@ -245,7 +245,7 @@ public sealed partial class MainForm
         bool hasSample = VoiceCatalog.HasExampleAudio(_storage.Settings.VoicesFolder, voice);
         var sampleBadge = hasSample ? "✓ Đã có file mẫu" : "○ Chưa tạo file mẫu";
         _voiceLanguageHint.Text = $"{VoiceLanguage.DisplayName(voice.Language)}  ·  Nhóm: {voice.Category}  ·  Chất lượng: {voice.Quality}  ·  {sampleBadge}";
-        _voiceLanguageHint.ForeColor = voice.Language == VoiceLanguage.Unknown ? Theme.Gold : Theme.Muted;
+        _voiceLanguageHint.ForeColor = voice.Language == VoiceLanguage.Unknown ? Theme.GoldText : Theme.Muted;
 
         if (voice.NumSpeakers <= 1)
         {
@@ -330,7 +330,7 @@ public sealed partial class MainForm
         var voice = SelectedVoiceInCatalog();
         if (voice is null)
         {
-            SetStatus("Hãy chọn một giọng trong bảng Danh mục Giọng.", Theme.Gold);
+            SetStatus("Hãy chọn một giọng trong bảng Danh sách giọng.", Theme.GoldText);
             return;
         }
         _storage.Settings.LastVoicePath = voice.ModelPath;
@@ -347,14 +347,14 @@ public sealed partial class MainForm
             }
         }
         ShowPage("editor");
-        SetStatus($"Đã chọn giọng '{voice.Name}' cho Studio.", Theme.Green);
+        SetStatus($"Đã chọn giọng '{voice.Name}' cho mục Biên tập.", Theme.Green);
     }
 
     private async Task PreviewSelectedEditorVoiceAsync()
     {
         if (_voiceCombo.SelectedItem is not VoiceModel voice)
         {
-            SetStatus("Chưa có giọng đọc nào được chọn.", Theme.Gold);
+            SetStatus("Chưa có giọng đọc nào được chọn.", Theme.GoldText);
             return;
         }
         var speaker = _speakerCombo.SelectedItem is VoiceSpeaker s ? s.Id : (int?)null;
@@ -366,7 +366,7 @@ public sealed partial class MainForm
         var voice = SelectedVoiceInCatalog();
         if (voice is null)
         {
-            SetStatus("Chọn một giọng trong danh sách để nghe hoặc tạo mẫu.", Theme.Gold);
+            SetStatus("Chọn một giọng trong danh sách để nghe hoặc tạo mẫu.", Theme.GoldText);
             return;
         }
         int? speaker = voice.NumSpeakers > 1 && voice.Speakers.Count > 0 ? voice.Speakers[0].Id : null;
@@ -384,7 +384,7 @@ public sealed partial class MainForm
 
         if (_busy)
         {
-            SetStatus("Đang có tác vụ xử lý khác. Hãy chờ hoặc bấm Dừng.", Theme.Gold);
+            SetStatus("Đang có tác vụ xử lý khác. Hãy chờ hoặc bấm Dừng.", Theme.GoldText);
             return;
         }
 
@@ -410,8 +410,8 @@ public sealed partial class MainForm
             PlayAudioFile(mp3Path, $"[Mẫu giọng] {voice.Name} ({voice.Category})");
             SetStatus($"Đã tạo và phát mẫu giọng: {voice.Name} (lưu tại Voices/example).", Theme.Green);
         }
-        catch (OperationCanceledException) { SetStatus("Đã hủy tạo mẫu giọng.", Theme.Gold); }
-        catch (Exception ex) { if (!_closing) ShowError(ex, "Không tạo được mẫu giọng."); SetStatus(ex.Message, Theme.Danger); }
+        catch (OperationCanceledException) { SetStatus("Đã hủy tạo mẫu giọng.", Theme.GoldText); }
+        catch (Exception ex) { if (!_closing) ShowError(ex, "Không tạo được mẫu giọng."); SetStatus(ex.Message, Theme.DangerText); }
         finally
         {
             _jobCancellation?.Dispose();
@@ -424,7 +424,7 @@ public sealed partial class MainForm
     {
         if (_busy)
         {
-            SetStatus("Đang chạy tác vụ khác. Hãy chờ hoặc bấm Dừng.", Theme.Gold);
+            SetStatus("Đang chạy tác vụ khác. Hãy chờ hoặc bấm Dừng.", Theme.GoldText);
             return;
         }
         if (_voices.Count == 0)
@@ -468,13 +468,13 @@ public sealed partial class MainForm
         catch (OperationCanceledException)
         {
             RefreshVoiceLabCatalog();
-            SetStatus("Đã dừng tạo mẫu giọng hàng loạt.", Theme.Gold);
+            SetStatus("Đã dừng tạo mẫu giọng hàng loạt.", Theme.GoldText);
         }
         catch (Exception ex)
         {
             RefreshVoiceLabCatalog();
             if (!_closing) ShowError(ex, "Không hoàn tất tạo mẫu cho tất cả giọng.");
-            SetStatus(ex.Message, Theme.Danger);
+            SetStatus(ex.Message, Theme.DangerText);
         }
         finally
         {
@@ -488,7 +488,7 @@ public sealed partial class MainForm
     {
         if (_busy)
         {
-            SetStatus("Đang xử lý âm thanh, không thể đổi tên file model lúc này.", Theme.Gold);
+            SetStatus("Đang xử lý âm thanh, không thể đổi tên file model lúc này.", Theme.GoldText);
             return;
         }
         using var popup = new Form
@@ -545,7 +545,7 @@ public sealed partial class MainForm
         {
             DropDownStyle = ComboBoxStyle.DropDown,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
+            BackColor = Theme.InputBg,
             ForeColor = Theme.Text,
             Font = Theme.Body
         };
@@ -619,11 +619,11 @@ public sealed partial class MainForm
         _mergeButton.Enabled = !busy;
         _cancelButton.Enabled = busy || _renderQueue.ActiveCount > 0;
         _renderStatus.Text = status;
-        _renderStatus.ForeColor = busy ? Theme.Blue : Theme.Muted;
+        _renderStatus.ForeColor = busy ? Theme.AccentText : Theme.Muted;
         if (busy)
         {
             _footerStatus.Text = status;
-            _footerStatus.ForeColor = Theme.Blue;
+            _footerStatus.ForeColor = Theme.AccentText;
         }
         else
         {
@@ -633,7 +633,7 @@ public sealed partial class MainForm
 
     private async Task StartReviewSnippetAsync()
     {
-        if (_busy) { SetStatus("Đang chạy tác vụ nghe thử/ghép. Hãy chờ hoặc bấm Dừng.", Theme.Gold); return; }
+        if (_busy) { SetStatus("Đang chạy tác vụ nghe thử/ghép. Hãy chờ hoặc bấm Dừng.", Theme.GoldText); return; }
         if (_voiceCombo.SelectedItem is not VoiceModel voice)
         { MessageBox.Show("Chưa có model giọng đọc. Hãy thêm model vào thư mục Voices."); return; }
         if (_speedCombo.SelectedItem is not SpeedOption selectedSpeed) return;
@@ -673,8 +673,8 @@ public sealed partial class MainForm
                 $"Đang phát bản nghe thử ({review.WordCount} từ{(review.Truncated ? $", cắt từ giới hạn {maxWords} từ" : "")}) – Giọng: {voice.Name}.",
                 Theme.Green);
         }
-        catch (OperationCanceledException) { SetStatus("Đã hủy nghe thử.", Theme.Gold); }
-        catch (Exception ex) { if (!_closing) ShowError(ex, "Nghe thử đoạn ngắn thất bại."); SetStatus(ex.Message, Theme.Danger); }
+        catch (OperationCanceledException) { SetStatus("Đã hủy nghe thử.", Theme.GoldText); }
+        catch (Exception ex) { if (!_closing) ShowError(ex, "Nghe thử đoạn ngắn thất bại."); SetStatus(ex.Message, Theme.DangerText); }
         finally
         {
             _jobCancellation?.Dispose();
@@ -728,30 +728,36 @@ public sealed partial class MainForm
 
     private void SyncParallelCombos(int count)
     {
-        int clamped = Math.Clamp(count, 1, 8);
-        int[] options = [1, 2, 3, 4, 6, 8];
-        int best = options.OrderBy(x => Math.Abs(x - clamped)).First();
-        string label = $"{best} luồng song song";
-
+        int normalized = count <= 0 ? 0 : count;
         _syncingParallelCombo = true;
         try
         {
-            if (_studioParallelCombo is not null && _studioParallelCombo.Items.Contains(label))
-                _studioParallelCombo.SelectedItem = label;
-            if (_queueParallelCombo is not null && _queueParallelCombo.Items.Contains(label))
-                _queueParallelCombo.SelectedItem = label;
+            static void SelectOption(ComboBox? combo, int target)
+            {
+                if (combo is null) return;
+                var existing = combo.Items.OfType<ParallelOption>().FirstOrDefault(x => x.Count == target);
+                if (existing is null)
+                {
+                    existing = new ParallelOption(target);
+                    combo.Items.Add(existing);
+                }
+                combo.SelectedItem = existing;
+            }
+            SelectOption(_studioParallelCombo, normalized);
+            SelectOption(_queueParallelCombo, normalized);
         }
         finally { _syncingParallelCombo = false; }
     }
 
     private void ApplyParallelConcurrency(int count)
     {
-        int clamped = Math.Clamp(count, 1, 8);
-        _storage.Settings.MaxParallelRenders = clamped;
+        int normalized = count <= 0 ? 0 : count;
+        _storage.Settings.MaxParallelRenders = normalized;
+        _storage.Settings.UnlimitedPowerMigrated = true;
         _storage.SaveSettings();
-        _renderQueue.SetMaxConcurrency(clamped);
-        SyncParallelCombos(clamped);
-        SetStatus($"Đã đặt số luồng Render chạy song song tối đa: {clamped} luồng.", Theme.Green);
+        _renderQueue.SetMaxConcurrency(normalized);
+        SyncParallelCombos(normalized);
+        SetStatus($"⚡ Chế độ công suất Render: {_renderQueue.ModeDisplayLabel}.", Theme.Green);
     }
 
     private void OnQueuedJobCompleted(RenderJobSnapshot snap, AudioEntry entry)
@@ -771,7 +777,7 @@ public sealed partial class MainForm
     private void OnQueuedJobFailed(RenderJobSnapshot snap, string error)
     {
         RefreshRenderQueueUi();
-        SetStatus($"✕ Lỗi luồng #{snap.SequenceNumber:00} ({snap.Title}): {error}", Theme.Danger);
+        SetStatus($"✕ Lỗi luồng #{snap.SequenceNumber:00} ({snap.Title}): {error}", Theme.DangerText);
         if (!Visible && _trayIcon is not null)
         {
             _trayIcon.ShowBalloonTip(3000, $"Lỗi luồng #{snap.SequenceNumber:00}", $"{snap.Title}: {error}", ToolTipIcon.Error);
@@ -784,13 +790,19 @@ public sealed partial class MainForm
         var (running, queued, completed, total, avgPct) = _renderQueue.GetSummary();
         int active = running + queued;
 
-        // 1. Sidebar badge & Header badge
-        if (_navigation.TryGetValue("queue", out var navBtn))
+        // 1. Sidebar badge on "1. Biên tập (0)" & Header badge
+        if (_navigation.TryGetValue("editor", out var navBtn))
         {
             navBtn.Text = active > 0
-                ? $"2. Đa luồng Render ({running} chạy{(queued > 0 ? $"+{queued}" : "")})"
-                : $"2. Đa luồng Render ({total})";
+                ? $"1. Biên tập ({running} chạy{(queued > 0 ? $"+{queued}" : "")})"
+                : $"1. Biên tập ({total})";
             navBtn.Invalidate();
+        }
+        if (_queueSectionTitle is not null)
+        {
+            _queueSectionTitle.Text = active > 0
+                ? $"ĐA LUỒNG RENDER ({running} đang chạy{(queued > 0 ? $" · {queued} chờ" : "")})"
+                : $"ĐA LUỒNG RENDER ({total})";
         }
         if (_headerQueueButton is not null)
         {
@@ -801,6 +813,9 @@ public sealed partial class MainForm
             _headerQueueButton.Invalidate();
         }
 
+        bool unlimited = _renderQueue.IsUnlimited;
+        string capLabel = unlimited ? "TỐI ĐA KHÔNG GIỚI HẠN" : $"tối đa {_renderQueue.MaxConcurrency} luồng";
+
         // 2. Studio Inspector progress & Cancel button (when not running foreground review)
         if (!_busy)
         {
@@ -809,15 +824,18 @@ public sealed partial class MainForm
             {
                 if (active > 0)
                 {
-                    _renderStatus.Text = $"⚡ Đang render song song {running}/{_renderQueue.MaxConcurrency} luồng (chờ: {queued} · xong: {completed}) — {avgPct}%";
-                    _renderStatus.ForeColor = Theme.Blue;
+                    int activeEngines = Math.Max(running, _renderQueue.ActiveWorkerProcesses);
+                    _renderStatus.Text = unlimited
+                        ? $"⚡ Đang chạy TỐI ĐA CÔNG SUẤT ({running} Audio · {activeEngines} luồng Piper · xong: {completed}) — {avgPct}%"
+                        : $"⚡ Đang render song song {running}/{_renderQueue.MaxConcurrency} Audio ({activeEngines} luồng Piper · chờ: {queued} · xong: {completed}) — {avgPct}%";
+                    _renderStatus.ForeColor = Theme.AccentText;
                     _progress.Percent = avgPct;
                 }
                 else
                 {
                     _renderStatus.Text = completed > 0
-                        ? $"✓ Đã hoàn tất {completed} bản thu · Sẵn sàng thêm luồng mới."
-                        : "Sẵn sàng xử lý đa luồng.";
+                        ? $"✓ Đã hoàn tất {completed} bản thu · Chế độ: {capLabel}."
+                        : $"Sẵn sàng xử lý đa luồng ({capLabel}).";
                     _renderStatus.ForeColor = completed > 0 ? Theme.Green : Theme.Muted;
                     _progress.Percent = completed > 0 ? 100 : 0;
                 }
@@ -828,27 +846,27 @@ public sealed partial class MainForm
         if (_trayIcon is not null)
         {
             string tip = active > 0
-                ? $"Lăng Kính Hư Không TTS · Đang chạy {running} luồng, chờ {queued} ({avgPct}%)"
-                : "Lăng Kính Hư Không TTS · Sẵn sàng";
+                ? $"Lăng Kính Hư Không TTS · Đang chạy {running} luồng ({avgPct}%)"
+                : "Lăng Kính Hư Không TTS · Sẵn sàng (Full Power)";
             // NotifyIcon.Text limit on Windows is 63 chars on classic APIs
             _trayIcon.Text = tip.Length > 63 ? tip[..63] : tip;
         }
         if (_trayQueueStatusItem is not null)
         {
             _trayQueueStatusItem.Text = active > 0
-                ? $"⚡  Đang chạy {running} luồng, chờ {queued} ({avgPct}%) — Bấm để xem"
-                : $"⚡  Đa luồng Render: Sẵn sàng ({completed} đã xong)";
+                ? $"⚡  Đang chạy {running} luồng{(queued > 0 ? $", chờ {queued}" : "")} ({avgPct}%) — Bấm để xem"
+                : $"⚡  Đa luồng ({capLabel}): Sẵn sàng ({completed} xong)";
         }
         if (_trayCancelAllItem is not null)
             _trayCancelAllItem.Enabled = active > 0;
 
-        // 4. Queue Dashboard Page controls
+        // 4. Queue Dashboard Panel controls
         if (_queueSummaryLabel is not null)
         {
             _queueSummaryLabel.Text = active > 0
-                ? $"⚡ Đang chạy {running}/{_renderQueue.MaxConcurrency} luồng song song · Chờ: {queued} · Hoàn tất: {completed}"
-                : $"Sẵn sàng (Tối đa {_renderQueue.MaxConcurrency} luồng song song) · Đã hoàn tất: {completed}/{total}";
-            _queueSummaryLabel.ForeColor = active > 0 ? Theme.Blue : Theme.Green;
+                ? $"⚡ Đang chạy {running} Audio ({capLabel}) · Chờ: {queued} · Xong: {completed}"
+                : $"Chế độ: {capLabel} · Đã hoàn tất: {completed}/{total}";
+            _queueSummaryLabel.ForeColor = active > 0 ? Theme.AccentText : Theme.Green;
         }
         if (_queueOverallProgress is not null)
             _queueOverallProgress.Percent = active > 0 ? avgPct : (completed > 0 ? 100 : 0);
@@ -887,7 +905,7 @@ public sealed partial class MainForm
                     _ => "✕ Lỗi: " + (s.ErrorMessage ?? "")
                 };
                 string elapsedText = s.Elapsed.TotalHours >= 1
-                    ? s.Elapsed.ToString(@"hh\:mm\:ss")
+                    ? $"{(int)s.Elapsed.TotalHours:00}:{s.Elapsed.Minutes:00}:{s.Elapsed.Seconds:00}"
                     : s.Elapsed.ToString(@"mm\:ss");
 
                 if (i < _renderQueueList.Items.Count)
@@ -924,13 +942,13 @@ public sealed partial class MainForm
     {
         if (_renderQueueList?.SelectedItems.Count == 0)
         {
-            SetStatus("Chọn một luồng đã hoàn tất (✓) để nghe.", Theme.Gold);
+            SetStatus("Chọn một luồng đã hoàn tất (✓) để nghe.", Theme.GoldText);
             return;
         }
         if (_renderQueueList!.SelectedItems[0].Tag is not RenderJobSnapshot snap) return;
         if (snap.State != RenderJobState.Completed || string.IsNullOrWhiteSpace(snap.OutputMp3Path) || !File.Exists(snap.OutputMp3Path))
         {
-            SetStatus($"Luồng #{snap.SequenceNumber:00} chưa hoàn tất hoặc file MP3 không còn tồn tại.", Theme.Gold);
+            SetStatus($"Luồng #{snap.SequenceNumber:00} chưa hoàn tất hoặc file MP3 không còn tồn tại.", Theme.GoldText);
             return;
         }
         PlayAudioFile(snap.OutputMp3Path, $"[Luồng #{snap.SequenceNumber:00}] {snap.Title}");
@@ -940,7 +958,7 @@ public sealed partial class MainForm
     {
         if (_renderQueueList?.SelectedItems.Count == 0)
         {
-            SetStatus("Chọn ít nhất một luồng đang chạy hoặc đang chờ để hủy.", Theme.Gold);
+            SetStatus("Chọn ít nhất một luồng đang chạy hoặc đang chờ để hủy.", Theme.GoldText);
             return;
         }
         int count = 0;
@@ -949,7 +967,7 @@ public sealed partial class MainForm
             if (item.Tag is RenderJobSnapshot snap && _renderQueue.CancelJob(snap.Id))
                 count++;
         }
-        if (count > 0) SetStatus($"Đã gửi lệnh dừng {count} luồng render.", Theme.Gold);
+        if (count > 0) SetStatus($"Đã gửi lệnh dừng {count} luồng render.", Theme.GoldText);
     }
 
     private void RefreshLibrary()
@@ -980,7 +998,7 @@ public sealed partial class MainForm
             }
         }
         finally { _library.EndUpdate(); }
-        _footerCount.Text = $"{_storage.Count:N0} MP3 trong Output";
+        _footerCount.Text = $"{_storage.Count:N0} MP3 trong Nơi lưu";
     }
 
     private static string FormatSize(long bytes)
@@ -1004,7 +1022,7 @@ public sealed partial class MainForm
     private void PlaySelected()
     {
         var selected = SelectedLibrary();
-        if (selected.Count == 0) { SetStatus("Chọn một MP3 trong danh sách để nghe.", Theme.Gold); return; }
+        if (selected.Count == 0) { SetStatus("Chọn một MP3 trong danh sách để nghe.", Theme.GoldText); return; }
         PlayAudioFile(selected[0].FilePath, selected[0].Title);
     }
 
@@ -1014,12 +1032,12 @@ public sealed partial class MainForm
         {
             if (_player.CurrentFile is null)
             {
-                if (_activePage == "queue")
+                if (_activePage == "editor" && _renderQueueList?.SelectedItems.Count > 0)
                 {
                     PlaySelectedQueueItem();
                     return;
                 }
-                if (_activePage == "voices")
+                if (_activePage == "settings" && _activeSettingsTab == "voices")
                 {
                     _ = PlayOrGenerateSelectedVoiceLabExampleAsync(forceRegenerate: false);
                     return;
@@ -1070,7 +1088,7 @@ public sealed partial class MainForm
     private void ExportSelected()
     {
         var chosen = SelectedLibrary();
-        if (chosen.Count == 0) { SetStatus("Chọn MP3 cần tải bản sao.", Theme.Gold); return; }
+        if (chosen.Count == 0) { SetStatus("Chọn MP3 cần tải bản sao.", Theme.GoldText); return; }
         try
         {
             if (chosen.Count == 1)
@@ -1120,7 +1138,7 @@ public sealed partial class MainForm
     private void RenameSelected()
     {
         var entries = SelectedLibrary();
-        if (entries.Count != 1) { SetStatus("Chọn đúng một MP3 để đổi tên.", Theme.Gold); return; }
+        if (entries.Count != 1) { SetStatus("Chọn đúng một MP3 để đổi tên.", Theme.GoldText); return; }
         var name = AskName("Đổi tên hiển thị", entries[0].Title);
         if (name is null) return;
         try
@@ -1135,9 +1153,9 @@ public sealed partial class MainForm
 
     private void DeleteSelected()
     {
-        if (_busy) { SetStatus("Đang xử lý audio. Hãy dừng hoặc chờ xong rồi mới xóa.", Theme.Gold); return; }
+        if (_busy) { SetStatus("Đang xử lý audio. Hãy dừng hoặc chờ xong rồi mới xóa.", Theme.GoldText); return; }
         var entries = SelectedLibrary();
-        if (entries.Count == 0) { SetStatus("Chọn MP3 cần xóa.", Theme.Gold); return; }
+        if (entries.Count == 0) { SetStatus("Chọn MP3 cần xóa.", Theme.GoldText); return; }
         if (MessageBox.Show($"XÓA VĨNH VIỄN {entries.Count} MP3 khỏi ổ đĩa và thư viện?\n\nKhông thể hoàn tác.",
             "Xác nhận xóa", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         try
@@ -1201,7 +1219,7 @@ public sealed partial class MainForm
         _mergeHint.Text = missing > 0
             ? $"{count:N0} đã chọn · thiếu {missing:N0} SRT"
             : $"{count:N0} / {_mergeList.Items.Count:N0} đoạn · đủ SRT";
-        _mergeHint.ForeColor = missing > 0 ? Theme.Danger : count >= 2 ? Theme.Green : Theme.Blue;
+        _mergeHint.ForeColor = missing > 0 ? Theme.DangerText : count >= 2 ? Theme.Green : Theme.AccentText;
     }
 
     private void CheckAllMerge(bool check)
@@ -1215,7 +1233,7 @@ public sealed partial class MainForm
     private void MoveMergeSelection(int direction)
     {
         if (_mergeList.SelectedItems.Count != 1)
-        { SetStatus("Chọn đúng một dòng để thay đổi thứ tự ghép.", Theme.Gold); return; }
+        { SetStatus("Chọn đúng một dòng để thay đổi thứ tự ghép.", Theme.GoldText); return; }
         var item = _mergeList.SelectedItems[0];
         var index = item.Index;
         var target = index + direction;
@@ -1236,7 +1254,7 @@ public sealed partial class MainForm
     private void AddSelectedToMerge()
     {
         var selected = SelectedLibrary();
-        if (selected.Count == 0) { SetStatus("Chọn các MP3 trong Thư viện trước.", Theme.Gold); return; }
+        if (selected.Count == 0) { SetStatus("Chọn các MP3 trong Nơi lưu trước.", Theme.GoldText); return; }
         RefreshMergeList();
         var ids = selected.Select(x => x.Id).ToHashSet();
         foreach (ListViewItem item in _mergeList.Items)
@@ -1261,7 +1279,7 @@ public sealed partial class MainForm
 
     private async Task StartMergeAsync()
     {
-        if (_busy) { SetStatus("Đang có tác vụ xử lý khác.", Theme.Gold); return; }
+        if (_busy) { SetStatus("Đang có tác vụ xử lý khác.", Theme.GoldText); return; }
         var selected = _mergeList.Items.Cast<ListViewItem>().Where(x => x.Checked)
             .Select(x => x.Tag).OfType<AudioEntry>().ToArray();
         if (selected.Length < 2)
@@ -1299,8 +1317,8 @@ public sealed partial class MainForm
             ShowPage("library");
             SetStatus($"Đã ghép MP3 + SRT ({selected.Length} đoạn) · tốc độ {((_mergeSpeedCombo.SelectedItem as SpeedOption)?.Value ?? 1):0.##}×: {result.Title}.", Theme.Green);
         }
-        catch (OperationCanceledException) { SetStatus("Đã hủy ghép MP3.", Theme.Gold); }
-        catch (Exception ex) { if (!_closing) ShowError(ex, "Không ghép được MP3."); SetStatus(ex.Message, Theme.Danger); }
+        catch (OperationCanceledException) { SetStatus("Đã hủy ghép MP3.", Theme.GoldText); }
+        catch (Exception ex) { if (!_closing) ShowError(ex, "Không ghép được MP3."); SetStatus(ex.Message, Theme.DangerText); }
         finally
         {
             _jobCancellation?.Dispose();
@@ -1339,8 +1357,8 @@ public sealed partial class MainForm
         var ffprobe = File.Exists(Path.Combine(Path.GetDirectoryName(_audio.FfmpegExe) ?? "", "ffprobe.exe"));
         var samples = _voices.Count(v => VoiceCatalog.HasExampleAudio(_storage.Settings.VoicesFolder, v));
         _dependencies.Text =
-            $"{(piper ? "✓" : "✕")} Piper ({(hasCuda ? "CPU + CUDA" : "CPU-only")})   ·   {(ffmpeg && ffprobe ? "✓" : "✕")} FFmpeg + FFprobe   ·   {_voices.Count} Voices ({samples} mẫu)   ·   Output sẵn sàng";
-        _dependencies.ForeColor = piper && ffmpeg && ffprobe && _voices.Count > 0 ? Theme.Green : Theme.Gold;
+            $"{(piper ? "✓" : "✕")} Piper ({(hasCuda ? "CPU + CUDA" : "CPU-only")})   ·   {(ffmpeg && ffprobe ? "✓" : "✕")} FFmpeg + FFprobe   ·   {_voices.Count} Voices ({samples} mẫu)   ·   Nơi lưu sẵn sàng";
+        _dependencies.ForeColor = piper && ffmpeg && ffprobe && _voices.Count > 0 ? Theme.Green : Theme.GoldText;
 
         if (_engineCombo is not null)
         {

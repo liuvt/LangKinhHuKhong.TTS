@@ -16,12 +16,18 @@ public static class ResumableRender
     public const int BatchSize = 80;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> KeyGates = new(StringComparer.Ordinal);
     private sealed record BatchState(string Key, int Index, int Count, long DurationTicks, uint SampleRate);
+    public sealed record ParallelBudget(
+        Func<bool> TryAcquireHelper,
+        Func<bool> TryYieldIfOversubscribed,
+        Action ReleaseHelper,
+        Func<int> GetTotalConcurrentWorkers);
+
     public sealed record RenderResult(string Mp3, string? Srt, string CheckpointFolder);
 
     public static async Task<RenderResult> RunAsync(string content, VoiceModel voice, int? speakerId,
         double speed, bool createSrt, bool useCuda, Storage storage, NativeVoicePaths paths,
         AudioPipeline audio, IProgress<(int done, int total)>? progress, CancellationToken ct,
-        Func<int>? extraWorkerAllowance = null)
+        ParallelBudget? budget = null)
     {
         if (string.IsNullOrWhiteSpace(content)) throw new InvalidOperationException("Chưa có văn bản cần đọc.");
         if (!AudioPipeline.SupportedSpeeds.Contains(speed)) throw new InvalidOperationException("Tốc độ không được hỗ trợ.");
@@ -30,7 +36,7 @@ public static class ResumableRender
         if (chunks.Count == 0) throw new InvalidOperationException("Nội dung không có câu hợp lệ để tạo giọng.");
         var modelInfo = new FileInfo(voice.ModelPath);
         var cfgInfo = new FileInfo(voice.ConfigPath);
-        var voicePrefix = $"v1.3-clarity|{voice.ModelPath}|{modelInfo.Length}|{modelInfo.LastWriteTimeUtc.Ticks}|" +
+        var voicePrefix = $"v1.8-clarity|{voice.ModelPath}|{modelInfo.Length}|{modelInfo.LastWriteTimeUtc.Ticks}|" +
             $"{cfgInfo.Length}|{cfgInfo.LastWriteTimeUtc.Ticks}|{speakerId}|{createSrt}|{useCuda}|{speed:0.####}|";
 
         // Incremental hash: avoid allocating another giant copy of the source manuscript.
@@ -96,24 +102,50 @@ public static class ResumableRender
             if (!pendingBatches.IsEmpty)
             {
                 var (model, config) = paths.Prepare(voice);
-                int maxHelpers = extraWorkerAllowance is not null && batchCount > 1
-                    ? Math.Clamp(extraWorkerAllowance(), 0, Math.Min(3, pendingBatches.Count - 1))
-                    : 0;
-                int activeHelpers = 0;
+                var helperTasks = new List<Task>();
+                var helperLock = new object();
+                int nextWorkerId = 0;
+
+                int ComputeIntraThreads()
+                {
+                    int concurrent = budget is not null ? Math.Max(1, budget.GetTotalConcurrentWorkers()) : 1;
+                    return concurrent > 1
+                        ? Math.Max(1, Environment.ProcessorCount / concurrent)
+                        : Math.Max(1, Environment.ProcessorCount);
+                }
+
+                void TrySpawnScaleUpHelpers()
+                {
+                    if (budget is null || ct.IsCancellationRequested) return;
+                    while (pendingBatches.Count > 1 && budget.TryAcquireHelper())
+                    {
+                        int id = Interlocked.Increment(ref nextWorkerId);
+                        lock (helperLock)
+                        {
+                            // Never pass ct to Task.Run here so RunWorkerAsync always enters its try/finally to ReleaseHelper()!
+                            helperTasks.Add(Task.Run(() => RunWorkerAsync(id, isHelper: true)));
+                        }
+                    }
+                }
 
                 async Task RunWorkerAsync(int workerId, bool isHelper)
                 {
-                    if (isHelper) Interlocked.Increment(ref activeHelpers);
+                    bool slotHeld = isHelper;
                     PersistentPiperSession? session = null;
                     var workerTag = $"w{workerId}-{Guid.NewGuid():N}";
                     try
                     {
                         while (pendingBatches.TryDequeue(out int batchIndex))
                         {
-                            ct.ThrowIfCancellationRequested();
-                            if (isHelper && extraWorkerAllowance is not null && extraWorkerAllowance() <= 0)
+                            if (ct.IsCancellationRequested)
                             {
-                                // Another parallel audio job joined the queue; return batch and yield CPU core!
+                                pendingBatches.Enqueue(batchIndex);
+                                ct.ThrowIfCancellationRequested();
+                            }
+                            if (isHelper && budget is not null && budget.TryYieldIfOversubscribed())
+                            {
+                                // Atomically yielded 1 excess helper slot so newly queued audio jobs get dedicated CPU cores without stampeding!
+                                slotHeld = false;
                                 pendingBatches.Enqueue(batchIndex);
                                 break;
                             }
@@ -132,7 +164,8 @@ public static class ResumableRender
                             if (session is null || !session.IsAlive)
                             {
                                 if (session is not null) await session.DisposeAsync();
-                                session = await PersistentPiperSession.StartAsync(audio.PiperExe, model, config, useCuda, ct);
+                                session = await PersistentPiperSession.StartAsync(
+                                    audio.PiperExe, model, config, useCuda, ct, ComputeIntraThreads());
                             }
 
                             foreach (var part in new[] { mp3, srt, meta, tmpMp3, tmpSrt })
@@ -150,14 +183,15 @@ public static class ResumableRender
                                     {
                                         try
                                         {
-                                            await session.SynthesizeAsync(chunk.Text, wav, speakerId, ct);
+                                            await session.SynthesizeAsync(chunk.Text, wav, speakerId, ct, speed);
                                         }
                                         catch (Exception ex) when (ex is InvalidOperationException or IOException && !ct.IsCancellationRequested)
                                         {
                                             await session.DisposeAsync();
-                                            session = await PersistentPiperSession.StartAsync(audio.PiperExe, model, config, useCuda, ct);
+                                            session = await PersistentPiperSession.StartAsync(
+                                                audio.PiperExe, model, config, useCuda, ct, ComputeIntraThreads());
                                             var fallbackText = SpeechPacing.SanitizeFallbackForPiper(chunk.Text);
-                                            await session.SynthesizeAsync(fallbackText, wav, speakerId, ct);
+                                            await session.SynthesizeAsync(fallbackText, wav, speakerId, ct, speed);
                                         }
                                         encoder ??= new StreamingPcmEncoder(audio.FfmpegExe, tmpMp3, wav, speed);
                                         var frames = await encoder.AppendAsync(wav, chunk.PauseAfterMs,
@@ -193,22 +227,35 @@ public static class ResumableRender
                                 if (File.Exists(tmpMp3)) try { File.Delete(tmpMp3); } catch { }
                                 if (File.Exists(tmpSrt)) try { File.Delete(tmpSrt); } catch { }
                             }
+
+                            // Dynamically scale UP intra-job helpers if another parallel job just finished and freed CPU cores!
+                            TrySpawnScaleUpHelpers();
                         }
                     }
                     finally
                     {
                         if (session is not null) await session.DisposeAsync();
-                        if (isHelper) Interlocked.Decrement(ref activeHelpers);
+                        if (slotHeld && budget is not null)
+                            budget.ReleaseHelper();
                     }
                 }
 
-                var workers = new List<Task>(1 + maxHelpers) { RunWorkerAsync(0, isHelper: false) };
-                for (int h = 1; h <= maxHelpers; h++)
+                // Acquire initial full-CPU helper slots for multi-batch manuscripts
+                TrySpawnScaleUpHelpers();
+                await RunWorkerAsync(0, isHelper: false);
+
+                while (true)
                 {
-                    int id = h;
-                    workers.Add(Task.Run(() => RunWorkerAsync(id, isHelper: true), ct));
+                    Task[] snapshot;
+                    lock (helperLock) snapshot = helperTasks.Where(t => !t.IsCompleted).ToArray();
+                    if (snapshot.Length == 0) break;
+                    await Task.WhenAll(snapshot);
                 }
-                await Task.WhenAll(workers);
+
+                // Propagate any fault/cancellation from helpers
+                Task[] allHelpers;
+                lock (helperLock) allHelpers = helperTasks.ToArray();
+                if (allHelpers.Length > 0) await Task.WhenAll(allHelpers);
 
                 // Ensure any batch re-enqueued by yielding helpers is finished by primary flow
                 if (!pendingBatches.IsEmpty)
@@ -226,7 +273,10 @@ public static class ResumableRender
             else
             {
                 var probe = Path.Combine(Path.GetDirectoryName(audio.FfmpegExe)!, "ffprobe.exe");
-                await Mp3StreamCopy.ConcatenateAsync(audio.FfmpegExe, probe, files, finished, stageFolder, ct);
+                // Pass pre-verified batch metadata to eliminate spawning hundreds of ffprobe processes on 1M+ char books!
+                var preInspected = ready.Select(x => new Mp3StreamCopy.Mp3Info(
+                    (int)x.SampleRate, 1, Math.Max(0.01, TimeSpan.FromTicks(x.DurationTicks).TotalSeconds))).ToArray();
+                await Mp3StreamCopy.ConcatenateAsync(audio.FfmpegExe, probe, files, finished, stageFolder, ct, preInspected);
             }
             if (createSrt)
             {

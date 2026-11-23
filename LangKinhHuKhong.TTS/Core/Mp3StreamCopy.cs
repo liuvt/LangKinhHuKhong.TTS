@@ -57,7 +57,20 @@ public static class Mp3StreamCopy
         IReadOnlyList<Mp3Info>? alreadyInspected = null)
     {
         if (sources.Count == 0) throw new ArgumentException("Không có MP3 cần ghép.");
-        var checkedInfo = alreadyInspected ?? await Task.WhenAll(sources.Select(p => InspectAsync(ffprobe, p, ct)));
+        IReadOnlyList<Mp3Info> checkedInfo;
+        if (alreadyInspected is not null)
+        {
+            checkedInfo = alreadyInspected;
+        }
+        else
+        {
+            var inspected = new Mp3Info[sources.Count];
+            await Parallel.ForEachAsync(
+                Enumerable.Range(0, sources.Count),
+                new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount), CancellationToken = ct },
+                async (idx, token) => inspected[idx] = await InspectAsync(ffprobe, sources[idx], token));
+            checkedInfo = inspected;
+        }
         EnsureCompatible(checkedInfo);
         foreach (var file in sources)
             if (!File.Exists(file)) throw new FileNotFoundException("Không tìm thấy MP3 đầu vào.", file);

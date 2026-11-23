@@ -168,9 +168,11 @@ public static class TtsSubtitleTimeline
         return string.Join("\n", result);
     }
 
-    private static bool EndsSentence(string text) => text.TrimEnd().TrimEnd('"', '\'', '”', '’', ')', ']').EndsWith('.') ||
-                                                     text.TrimEnd().TrimEnd('"', '\'', '”', '’', ')', ']').EndsWith('!') ||
-                                                     text.TrimEnd().TrimEnd('"', '\'', '”', '’', ')', ']').EndsWith('?');
+    private static bool EndsSentence(string text)
+    {
+        var t = text.AsSpan().TrimEnd().TrimEnd(" \"'”’)]}»」』");
+        return !t.IsEmpty && t[^1] is '.' or '!' or '?' or '…' or '。' or '！' or '？' or '؟' or '۔';
+    }
     private static long SilenceFrames(uint sampleRate, int ms) =>
         (long)Math.Round(sampleRate * (double)ms / 1000, MidpointRounding.AwayFromZero);
     private static TimeSpan FramesToTime(long frames, uint sampleRate) =>

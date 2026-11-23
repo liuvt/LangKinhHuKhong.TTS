@@ -54,16 +54,18 @@ public sealed record RenderJobSnapshot(
     string? ErrorMessage);
 
 /// <summary>
-/// Manages concurrent parallel audio rendering (1..8 simultaneous streams) with live progress,
-/// dynamic concurrency scaling, per-job cancellation, and adaptive intra-job worker sharing.
+/// Manages concurrent parallel audio rendering with an UNLIMITED max-power mode (MaxConcurrency = 0)
+/// as well as any user-specified worker count (1..512+), with live progress and adaptive intra-job worker scaling.
 /// </summary>
 public sealed class RenderQueueManager : IDisposable
 {
+    public const int UnlimitedConcurrency = 0;
     private readonly object _gate = new();
     private readonly JobManager _jobManager;
     private readonly List<RenderJobItem> _items = [];
-    private int _maxConcurrency;
+    private int _maxConcurrency; // 0 = Unlimited queue + 100% full-CPU intra-job batch saturation
     private int _runningCount;
+    private int _activeHelpers;
     private int _sequenceCounter;
     private long _lastProgressNotifyTicks;
     private bool _disposed;
@@ -72,10 +74,10 @@ public sealed class RenderQueueManager : IDisposable
     public event Action<RenderJobSnapshot, AudioEntry>? JobCompleted;
     public event Action<RenderJobSnapshot, string>? JobFailed;
 
-    public RenderQueueManager(JobManager jobManager, int initialMaxConcurrency = 3)
+    public RenderQueueManager(JobManager jobManager, int initialMaxConcurrency = UnlimitedConcurrency)
     {
         _jobManager = jobManager;
-        _maxConcurrency = Math.Clamp(initialMaxConcurrency, 1, 8);
+        _maxConcurrency = initialMaxConcurrency <= 0 ? UnlimitedConcurrency : initialMaxConcurrency;
     }
 
     public int MaxConcurrency
@@ -83,13 +85,37 @@ public sealed class RenderQueueManager : IDisposable
         get { lock (_gate) return _maxConcurrency; }
     }
 
+    public bool IsUnlimited
+    {
+        get { lock (_gate) return _maxConcurrency <= 0; }
+    }
+
+    public static int FullHardwareWorkerCount => Math.Max(Environment.ProcessorCount, 4);
+
+    /// <summary>Total active Piper synthesis sessions currently running across all primary jobs + intra-job helpers.</summary>
+    public int ActiveWorkerProcesses
+    {
+        get { lock (_gate) return _runningCount + _activeHelpers; }
+    }
+
+    public string ModeDisplayLabel
+    {
+        get
+        {
+            lock (_gate)
+                return _maxConcurrency <= 0
+                    ? $"Tối đa công suất (Không giới hạn · Full {FullHardwareWorkerCount} nhân)"
+                    : $"{_maxConcurrency} luồng song song";
+        }
+    }
+
     public void SetMaxConcurrency(int maxConcurrency)
     {
-        int clamped = Math.Clamp(maxConcurrency, 1, 8);
+        int normalized = maxConcurrency <= 0 ? UnlimitedConcurrency : maxConcurrency;
         lock (_gate)
         {
-            if (_maxConcurrency == clamped) return;
-            _maxConcurrency = clamped;
+            if (_maxConcurrency == normalized) return;
+            _maxConcurrency = normalized;
             ScheduleUnlocked();
         }
         NotifyStateChanged(force: true);
@@ -237,11 +263,29 @@ public sealed class RenderQueueManager : IDisposable
         NotifyStateChanged(force: true);
     }
 
+    private static int ComputeUnlimitedSafeProcessCeiling()
+    {
+        try
+        {
+            long totalRam = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+            if (totalRam > 0)
+            {
+                // ~320 MB headroom per concurrent ONNX+FFmpeg pair prevents Windows pagefile OOM on 100+ file drops
+                // while still allowing 16-64+ simultaneous streams on 8-32 GB machines.
+                int byRam = (int)(totalRam / (320L * 1024 * 1024));
+                return Math.Max(FullHardwareWorkerCount * 3, byRam);
+            }
+        }
+        catch { }
+        return Math.Max(FullHardwareWorkerCount * 4, 24);
+    }
+
     private void ScheduleUnlocked()
     {
         if (_disposed) return;
-        // Start oldest queued jobs first (FIFO execution order) up to _maxConcurrency
-        for (int i = _items.Count - 1; i >= 0 && _runningCount < _maxConcurrency; i--)
+        int limit = _maxConcurrency <= 0 ? ComputeUnlimitedSafeProcessCeiling() : _maxConcurrency;
+        // Start oldest queued jobs first (FIFO execution order); in Unlimited mode (0), launches up to full RAM-safe ceiling!
+        for (int i = _items.Count - 1; i >= 0 && _runningCount < limit; i--)
         {
             var candidate = _items[i];
             if (candidate.State != RenderJobState.Queued) continue;
@@ -252,14 +296,55 @@ public sealed class RenderQueueManager : IDisposable
         }
     }
 
-    private int GetExtraWorkerAllowance()
+    private bool TryAcquireHelperSlot()
+    {
+        bool acquired = false;
+        lock (_gate)
+        {
+            if (!_disposed && !_items.Any(x => x.State == RenderJobState.Queued))
+            {
+                int targetTotalWorkers = _maxConcurrency <= 0 ? FullHardwareWorkerCount : _maxConcurrency;
+                if (_runningCount + _activeHelpers < targetTotalWorkers)
+                {
+                    _activeHelpers++;
+                    acquired = true;
+                }
+            }
+        }
+        if (acquired) NotifyStateChanged(force: false);
+        return acquired;
+    }
+
+    private bool TryYieldIfOversubscribed()
+    {
+        bool yielded = false;
+        lock (_gate)
+        {
+            int targetTotalWorkers = _maxConcurrency <= 0 ? FullHardwareWorkerCount : _maxConcurrency;
+            bool hasQueued = _items.Any(x => x.State == RenderJobState.Queued);
+            if (_disposed || hasQueued || (_runningCount + _activeHelpers > targetTotalWorkers))
+            {
+                _activeHelpers = Math.Max(0, _activeHelpers - 1);
+                yielded = true;
+            }
+        }
+        if (yielded) NotifyStateChanged(force: false);
+        return yielded;
+    }
+
+    private void ReleaseHelperSlot()
     {
         lock (_gate)
         {
-            int queued = _items.Count(x => x.State == RenderJobState.Queued);
-            if (queued > 0) return 0;
-            return Math.Max(0, _maxConcurrency - _runningCount);
+            _activeHelpers = Math.Max(0, _activeHelpers - 1);
         }
+        NotifyStateChanged(force: false);
+    }
+
+    private int GetTotalConcurrentWorkers()
+    {
+        lock (_gate)
+            return Math.Max(1, _runningCount + _activeHelpers);
     }
 
     private async Task ExecuteJobAsync(RenderJobItem job)
@@ -281,6 +366,11 @@ public sealed class RenderQueueManager : IDisposable
 
         try
         {
+            var budget = new ResumableRender.ParallelBudget(
+                TryAcquireHelperSlot,
+                TryYieldIfOversubscribed,
+                ReleaseHelperSlot,
+                GetTotalConcurrentWorkers);
             var entry = await _jobManager.RenderAsync(
                 job.Content,
                 job.Voice,
@@ -291,7 +381,7 @@ public sealed class RenderQueueManager : IDisposable
                 job.CreateSrt,
                 job.UseCuda,
                 job.Title,
-                GetExtraWorkerAllowance);
+                budget);
 
             lock (_gate)
             {

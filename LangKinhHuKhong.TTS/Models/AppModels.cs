@@ -41,7 +41,9 @@ public sealed class DesktopSettings
     public string LastCategory { get; set; } = "Tất cả";
     public string LastLanguage { get; set; } = "*";
     public int ReviewWordLimit { get; set; } = 50;
-    public int MaxParallelRenders { get; set; } = Math.Clamp(Environment.ProcessorCount / 4, 2, 4);
+    // 0 = Tối đa công suất / Không giới hạn hàng đợi & bão hòa 100% nhân CPU; >0 = số luồng cố định tùy chọn.
+    public int MaxParallelRenders { get; set; } = 0;
+    public bool UnlimitedPowerMigrated { get; set; }
     public bool MinimizeToTray { get; set; } = true;
     public bool CloseToTrayWhenBusy { get; set; } = true;
     public string SampleText { get; set; } =

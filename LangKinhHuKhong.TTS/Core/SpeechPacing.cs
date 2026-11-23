@@ -18,7 +18,7 @@ public static class SpeechPacing
     public const int PeriodPauseMs = 310;
     public const int ExclamationPauseMs = 350;
     public const int QuestionPauseMs = 330;
-    public const int EllipsisPauseMs = 420;
+    public const int EllipsisPauseMs = 480;
     public const int LinePauseMs = 350;
     public const int ParagraphPauseMs = 550;
     public const int SoftPauseMs = 100;
@@ -102,12 +102,9 @@ public static class SpeechPacing
             // Keep mid-sentence ellipsis inside the same sentence as a comma pause!
             if (c == '…' || (c == '.' && i + 1 < input.Length && input[i + 1] == '.'))
             {
-                int extraDots = 0;
+                int ellipStart = i;
                 while (i + 1 < input.Length && input[i + 1] is '.' or '…')
-                {
                     i++;
-                    extraDots++;
-                }
 
                 int look = i + 1;
                 while (look < input.Length && (input[look] == ' ' || input[look] == '\t'))
@@ -115,12 +112,19 @@ public static class SpeechPacing
 
                 if (look < input.Length && char.IsLower(input[look]) && segment.Length < MaxPhraseLength - 30)
                 {
-                    // Replace mid-sentence '...' or '…' before a lowercase word with ',' so Piper keeps full clause context.
-                    segment[^1] = ',';
-                    continue;
+                    CountWordsAndCjk(segment.ToString().AsSpan(), out int curWords, out int curCjk);
+                    bool isDramaticShortEllipsis = curWords is >= 1 and <= 2 && curCjk <= 3 &&
+                                                   !StartsWithWeakConnector(input.AsSpan(look));
+                    if (!isDramaticShortEllipsis)
+                    {
+                        // Replace mid-sentence '...' or '…' before a lowercase word with ',' so Piper keeps full clause context.
+                        segment[^1] = ',';
+                        continue;
+                    }
                 }
 
-                for (int d = 0; d < extraDots; d++) segment.Append('.');
+                for (int k = ellipStart + 1; k <= i; k++)
+                    segment.Append(input[k]);
                 while (i + 1 < input.Length && IsTrailing(input[i + 1]))
                     segment.Append(input[++i]);
                 Flush(EllipsisPauseMs);
@@ -192,7 +196,8 @@ public static class SpeechPacing
             return false;
 
         int remEnd = remStart;
-        while (remEnd < input.Length)
+        int maxLookahead = Math.Min(input.Length, remStart + 128); // O(1) bounded scan for multi-million char manuscripts
+        while (remEnd < maxLookahead)
         {
             char ch = input[remEnd];
             if (ch is '\n' or '[' or '!' or '?' or '！' or '？' or '؟' or '…' or '。' or '۔')
@@ -367,6 +372,113 @@ public static class SpeechPacing
         }
         return cleaned;
     }
+
+    /// <summary>
+    /// VITS/Piper models trained on full sentences suffer severe BOS/EOS Conv1D edge collapse on isolated 1-2 word
+    /// utterances (e.g. "Giết!" -> "Chiết", "Giữ." -> "Thứ", "Đánh!" -> "Đấy", "Cút!" -> "Cố").
+    /// Prepending a neutral vowel + colon ("À: " / "Ừ: ") warms up the HiFi-GAN & duration predictor inside a single
+    /// tensor with a clean digital silence valley right before the target word, which WavPacing then slices off cleanly.
+    /// </summary>
+    public static (string TextToSynthesize, bool CarrierApplied) BuildShortUtteranceCarrier(string preparedText, string? languageHint = null)
+    {
+        if (string.IsNullOrWhiteSpace(preparedText)) return (preparedText, false);
+        CountWordsAndCjk(preparedText.AsSpan(), out int words, out int cjk);
+
+        if (cjk is >= 1 and <= 2 && words == 0)
+        {
+            char firstCjk = preparedText.FirstOrDefault(IsCjk);
+            string cjkCarrier = firstCjk == '啊' ? "嗯，" : "啊，";
+            return (cjkCarrier + preparedText, true);
+        }
+
+        if (words is >= 1 and <= 2 && cjk == 0 && preparedText.Length <= 22)
+        {
+            bool isVi = ContainsVietnameseDiacritics(preparedText) ||
+                        (!string.IsNullOrWhiteSpace(languageHint) &&
+                         languageHint.Trim().StartsWith("vi", StringComparison.OrdinalIgnoreCase));
+            char firstLetter = preparedText.FirstOrDefault(char.IsLetter);
+            if (isVi)
+            {
+                // Voiceless-stop coda ('-t') physically closes the vocal tract to near-zero amplitude before ':',
+                // creating a guaranteed silence valley on ALL VITS models (including fast male voices like lacphi)
+                // with zero voiced formant bleed into initial 'gi-', 'đ-', 'ch-', or open vowels.
+                bool startsWithU = firstLetter != '\0' &&
+                    "uUùÙúÚủỦũŨụỤưƯừỪứỨửỬữỮựỰ".Contains(firstLetter, StringComparison.Ordinal);
+                return ((startsWithU ? "Ất: " : "Út: ") + preparedText, true);
+            }
+            else
+            {
+                bool startsWithA = firstLetter is 'a' or 'A';
+                return ((startsWithA ? "Up: " : "At: ") + preparedText, true);
+            }
+        }
+
+        return (preparedText, false);
+    }
+
+    public readonly record struct EllipsisSustainSpec(double StretchFactor, int MinTargetCoreMs)
+    {
+        public bool IsActive => StretchFactor > 1.05;
+    }
+
+    /// <summary>
+    /// Computes both the stretch multiplier and minimum target vocalic-core duration (ms)
+    /// when a segment ends with trailing ellipsis ("Giết...", "Không…", "Sư phụ ơi...", "Giết......").
+    /// Compensates for playbackSpeed &gt; 1.0 (e.g. 1.5x) so sustained vowels still sound clearly elongated
+    /// even after FFmpeg atempo compression, and ensures naturally short checked syllables ('-t', '-p', '-c'
+    /// like "Giết...") reach a full dramatic ~560-760ms vocal hold instead of only adding ~60ms.
+    /// </summary>
+    public static EllipsisSustainSpec GetTrailingEllipsisSustainSpec(string? rawText, double playbackSpeed = 1.0)
+    {
+        if (string.IsNullOrWhiteSpace(rawText) || !HasPronounceableText(rawText))
+            return new(1.0, 0);
+
+        ReadOnlySpan<char> span = rawText.AsSpan().TrimEnd();
+        while (!span.IsEmpty && span[^1] is '"' or '\'' or '”' or '’' or '»' or '」' or '』' or ')' or ']' or '}' or '）'
+               or '!' or '?' or '！' or '？' or ' ')
+        {
+            span = span[..^1];
+        }
+
+        int effectiveDots = 0;
+        int idx = span.Length - 1;
+        while (idx >= 0 && (span[idx] == '.' || span[idx] == '…'))
+        {
+            effectiveDots += span[idx] == '…' ? 3 : 1;
+            idx--;
+        }
+
+        if (effectiveDots < 2)
+            return new(1.0, 0);
+
+        double speedComp = double.IsFinite(playbackSpeed) && playbackSpeed > 1.0
+            ? Math.Sqrt(Math.Min(playbackSpeed, 2.0))
+            : 1.0;
+
+        CountWordsAndCjk(span[..(idx + 1)], out int words, out int cjk);
+        bool isShortDramatic = (words is >= 1 and <= 3 && cjk == 0) || (cjk is >= 1 and <= 4 && words == 0);
+        if (isShortDramatic)
+        {
+            double baseStretch = effectiveDots >= 5 ? 4.6 : 3.6;
+            int baseCoreMs = effectiveDots >= 5 ? 760 : 560;
+            return new(baseStretch * speedComp, (int)Math.Round(baseCoreMs * speedComp));
+        }
+
+        bool isMediumClause = (words is >= 4 and <= 6 && cjk == 0) || (cjk is >= 5 and <= 10 && words == 0);
+        if (isMediumClause)
+        {
+            double baseStretch = effectiveDots >= 5 ? 2.8 : 2.2;
+            int baseCoreMs = effectiveDots >= 5 ? 420 : 320;
+            return new(baseStretch * speedComp, (int)Math.Round(baseCoreMs * speedComp));
+        }
+
+        double longStretch = effectiveDots >= 5 ? 2.25 : 1.65;
+        int longCoreMs = effectiveDots >= 5 ? 320 : 220;
+        return new(longStretch * speedComp, (int)Math.Round(longCoreMs * speedComp));
+    }
+
+    public static double GetTrailingEllipsisStretchFactor(string? rawText, double playbackSpeed = 1.0)
+        => GetTrailingEllipsisSustainSpec(rawText, playbackSpeed).StretchFactor;
 
     public static string SanitizeFallbackForPiper(string text)
     {

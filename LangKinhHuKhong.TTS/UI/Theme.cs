@@ -7,21 +7,28 @@ namespace LangKinhHuKhong.TTS.UI;
 
 internal static class Theme
 {
-    // Modern Studio Palette (Slate & Indigo)
-    public static readonly Color Background = Color.FromArgb(241, 245, 249);    // Slate 100 workspace canvas
-    public static readonly Color Sidebar = Color.FromArgb(15, 23, 42);          // Slate 900 sidebar
-    public static readonly Color SidebarAccent = Color.FromArgb(30, 41, 59);    // Slate 800 card/hover on sidebar
-    public static readonly Color Surface = Color.FromArgb(255, 255, 255);       // Pure White card surface
-    public static readonly Color Inset = Color.FromArgb(248, 250, 252);         // Slate 50 input/editor fill
-    public static readonly Color Border = Color.FromArgb(203, 213, 225);        // Slate 300 crisp hairline border
-    public static readonly Color Text = Color.FromArgb(15, 23, 42);             // Slate 900 primary text
-    public static readonly Color Muted = Color.FromArgb(100, 116, 139);         // Slate 500 secondary text
+    // Obsidian & Deep Crimson Studio Palette ("Đỏ đậm đen")
+    public static readonly Color Background = Color.FromArgb(11, 9, 11);         // #0B090B - Deep Obsidian Black canvas
+    public static readonly Color Sidebar = Color.FromArgb(7, 5, 7);              // #070507 - Pitch Onyx sidebar
+    public static readonly Color SidebarAccent = Color.FromArgb(24, 12, 16);     // #180C10 - Dark Wine-Charcoal sidebar card
+    public static readonly Color Surface = Color.FromArgb(19, 14, 17);           // #130E11 - Obsidian-Crimson card surface
+    public static readonly Color Inset = Color.FromArgb(27, 18, 22);             // #1B1216 - Elevated Dark Crimson inset
+    public static readonly Color InputBg = Color.FromArgb(23, 16, 20);           // #171014 - Editor / Input / List fill
+    public static readonly Color InputAltBg = Color.FromArgb(29, 20, 25);        // #1D1419 - Alternating list row fill
+    public static readonly Color HeaderBg = Color.FromArgb(38, 15, 22);          // #260F16 - Dark Crimson table header
+    public static readonly Color SelectionBg = Color.FromArgb(112, 20, 34);      // #701422 - Deep Crimson active selection
+    public static readonly Color Border = Color.FromArgb(74, 28, 38);            // #4A1C26 - Crisp Deep Wine hairline border
+    public static readonly Color Text = Color.FromArgb(246, 238, 240);           // #F6EEF0 - Crisp Warm Off-White primary text
+    public static readonly Color Muted = Color.FromArgb(178, 152, 160);          // #B298A0 - Muted Rose-Slate secondary text
 
-    // Studio Accents
-    public static readonly Color Blue = Color.FromArgb(79, 70, 229);            // Indigo 600 primary CTA
-    public static readonly Color Gold = Color.FromArgb(13, 148, 136);           // Teal 600 preview/highlight accent
-    public static readonly Color Green = Color.FromArgb(5, 150, 105);           // Emerald 600 ready/success
-    public static readonly Color Danger = Color.FromArgb(225, 29, 72);          // Rose 600 destructive
+    // Studio Accents (Crimson & Dark Ruby)
+    public static readonly Color Blue = Color.FromArgb(168, 22, 35);             // #A81623 - Primary Deep Crimson CTA
+    public static readonly Color AccentText = Color.FromArgb(248, 105, 118);     // #F86976 - High-contrast Crimson badge text
+    public static readonly Color Gold = Color.FromArgb(118, 22, 42);             // #76162A - Dark Burgundy / Wine secondary CTA
+    public static readonly Color GoldText = Color.FromArgb(251, 176, 64);        // #FBB040 - Warm Amber status warning text
+    public static readonly Color Green = Color.FromArgb(52, 211, 153);           // #34D399 - Emerald ready/success text
+    public static readonly Color Danger = Color.FromArgb(215, 28, 62);           // #D71C3E - Vivid Crimson-Rose destructive
+    public static readonly Color DangerText = Color.FromArgb(251, 113, 133);     // #FB7185 - Readable Rose error text
 
     public static readonly Font Body = new("Segoe UI", 9.5f, FontStyle.Regular);
     public static readonly Font Small = new("Segoe UI", 8.75f, FontStyle.Regular);
@@ -73,7 +80,7 @@ internal static class Theme
     public static TextBox Textbox(string? text = null) => new()
     {
         Text = text ?? "",
-        BackColor = Color.White,
+        BackColor = InputBg,
         ForeColor = Text,
         BorderStyle = BorderStyle.FixedSingle,
         Font = Body,
@@ -84,8 +91,8 @@ internal static class Theme
     public static ComboBox Combo() => new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
-        FlatStyle = FlatStyle.Standard,
-        BackColor = Color.White,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = InputBg,
         ForeColor = Text,
         Font = Body,
         IntegralHeight = false,
@@ -108,6 +115,24 @@ internal static class Theme
         if (cols == 1) table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         if (rows == 1) table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         return table;
+    }
+
+    public static ToolStripProfessionalRenderer CreateMenuRenderer()
+        => new(new CrimsonMenuColorTable()) { RoundedEdges = true };
+
+    private sealed class CrimsonMenuColorTable : ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => Surface;
+        public override Color MenuBorder => Border;
+        public override Color MenuItemBorder => Color.FromArgb(168, 22, 35);
+        public override Color MenuItemSelected => SelectionBg;
+        public override Color MenuItemSelectedGradientBegin => SelectionBg;
+        public override Color MenuItemSelectedGradientEnd => SelectionBg;
+        public override Color ImageMarginGradientBegin => Sidebar;
+        public override Color ImageMarginGradientMiddle => Sidebar;
+        public override Color ImageMarginGradientEnd => Sidebar;
+        public override Color SeparatorDark => Border;
+        public override Color SeparatorLight => Color.Transparent;
     }
 }
 
@@ -132,8 +157,6 @@ internal sealed class SurfacePanel : Panel
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        // Fill interior with BackColor so transparent child labels/tables inherit the exact card color,
-        // while clipping outer corners to the parent's background color.
         var outerColor = Theme.ResolveParentBackColor(this);
         e.Graphics.Clear(outerColor);
         var rect = new Rectangle(0, 0, Width - 1, Height - 1);
@@ -180,7 +203,7 @@ internal sealed class ModernButton : Button
                  ControlStyles.ResizeRedraw, true);
         FlatStyle = FlatStyle.Flat;
         FlatAppearance.BorderSize = 0;
-        BackColor = Color.White;
+        BackColor = Theme.Inset;
         ForeColor = Theme.Text;
         Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold);
         Height = 34;
@@ -209,69 +232,57 @@ internal sealed class ModernButton : Button
         var rect = new Rectangle(1, 1, Width - 3, Height - 3);
         if (rect.Width <= 2 || rect.Height <= 2) return;
 
-        bool onDarkSurface = parentBg.GetBrightness() < 0.35f;
         Color fill;
         Color border;
         Color foreground;
 
         if (!Enabled)
         {
-            fill = onDarkSurface ? Color.FromArgb(30, 41, 59) : Color.FromArgb(241, 245, 249);
-            border = onDarkSurface ? Color.FromArgb(51, 65, 85) : Color.FromArgb(226, 232, 240);
-            foreground = Color.FromArgb(148, 163, 184);
+            fill = Color.FromArgb(22, 16, 19);
+            border = Color.FromArgb(44, 26, 32);
+            foreground = Color.FromArgb(104, 86, 92);
         }
         else
         {
             switch (Style)
             {
                 case Kind.Primary:
-                    fill = _down ? Color.FromArgb(55, 48, 163)
-                         : _over ? Color.FromArgb(67, 56, 202)
+                    fill = _down ? Color.FromArgb(132, 16, 28)
+                         : _over ? Color.FromArgb(198, 28, 44)
                          : Theme.Blue;
-                    border = _over ? Color.FromArgb(55, 48, 163) : Color.FromArgb(67, 56, 202);
+                    border = _over ? Color.FromArgb(238, 68, 84) : Color.FromArgb(204, 40, 56);
                     foreground = Color.White;
                     break;
 
                 case Kind.Gold:
-                    fill = _down ? Color.FromArgb(17, 94, 89)
-                         : _over ? Color.FromArgb(15, 118, 110)
+                    fill = _down ? Color.FromArgb(90, 16, 32)
+                         : _over ? Color.FromArgb(146, 28, 52)
                          : Theme.Gold;
-                    border = _over ? Color.FromArgb(17, 94, 89) : Color.FromArgb(15, 118, 110);
-                    foreground = Color.White;
+                    border = _over ? Color.FromArgb(196, 52, 80) : Color.FromArgb(156, 36, 60);
+                    foreground = Color.FromArgb(255, 238, 242);
                     break;
 
                 case Kind.Destructive:
-                    fill = _down ? Color.FromArgb(159, 18, 57)
-                         : _over ? Color.FromArgb(190, 18, 60)
-                         : Theme.Danger;
-                    border = _over ? Color.FromArgb(159, 18, 57) : Color.FromArgb(190, 18, 60);
+                    fill = _down ? Color.FromArgb(128, 14, 38)
+                         : _over ? Color.FromArgb(215, 28, 62)
+                         : Color.FromArgb(155, 20, 46);
+                    border = _over ? Color.FromArgb(244, 63, 94) : Color.FromArgb(196, 34, 66);
                     foreground = Color.White;
                     break;
 
                 case Kind.Ghost:
-                    if (onDarkSurface)
-                    {
-                        fill = _down ? Color.FromArgb(51, 65, 85)
-                             : _over ? Color.FromArgb(30, 41, 59)
-                             : parentBg;
-                        border = _over ? Color.FromArgb(51, 65, 85) : parentBg;
-                        foreground = _over ? Color.White : Color.FromArgb(203, 213, 225);
-                    }
-                    else
-                    {
-                        fill = _down ? Color.FromArgb(226, 232, 240)
-                             : _over ? Color.FromArgb(241, 245, 249)
-                             : Color.White;
-                        border = _over ? Color.FromArgb(148, 163, 184) : Theme.Border;
-                        foreground = Theme.Text;
-                    }
+                    fill = _down ? Color.FromArgb(58, 20, 28)
+                         : _over ? Color.FromArgb(36, 16, 22)
+                         : parentBg;
+                    border = _over ? Color.FromArgb(98, 34, 46) : parentBg;
+                    foreground = _over ? Color.White : Color.FromArgb(208, 188, 196);
                     break;
 
                 default: // Kind.Secondary
-                    fill = _down ? Color.FromArgb(226, 232, 240)
-                         : _over ? Color.FromArgb(241, 245, 249)
-                         : Color.White;
-                    border = _over ? Color.FromArgb(148, 163, 184) : Theme.Border;
+                    fill = _down ? Color.FromArgb(58, 24, 32)
+                         : _over ? Color.FromArgb(42, 22, 28)
+                         : Color.FromArgb(29, 19, 24);
+                    border = _over ? Color.FromArgb(148, 46, 62) : Theme.Border;
                     foreground = Theme.Text;
                     break;
             }
@@ -324,14 +335,127 @@ internal sealed class ModernProgressBar : Control
         var trackRect = new Rectangle(0, 0, Width - 1, Height - 1);
         if (trackRect.Width <= 2 || trackRect.Height <= 2) return;
         using var bg = Theme.Rounded(trackRect, 4);
-        using var brush = new SolidBrush(Color.FromArgb(226, 232, 240));
+        using var brush = new SolidBrush(Color.FromArgb(42, 22, 28));
         e.Graphics.FillPath(brush, bg);
         int w = (int)Math.Round((Width - 1) * Percent / 100d);
         if (w > 0)
         {
             using var fg = Theme.Rounded(new Rectangle(0, 0, Math.Max(4, w), Height - 1), 4);
-            using var accent = new SolidBrush(Theme.Blue);
+            using var accent = new SolidBrush(Color.FromArgb(208, 32, 48));
             e.Graphics.FillPath(accent, fg);
         }
+    }
+}
+
+internal sealed class DarkListView : ListView
+{
+    private static readonly Font HeaderFont = new("Segoe UI Semibold", 8.75f, FontStyle.Bold);
+
+    public DarkListView(bool checkBoxes)
+    {
+        DoubleBuffered = true;
+        Dock = DockStyle.Fill;
+        View = View.Details;
+        FullRowSelect = true;
+        HideSelection = false;
+        CheckBoxes = checkBoxes;
+        MultiSelect = true;
+        OwnerDraw = true;
+        BackColor = Theme.InputBg;
+        ForeColor = Theme.Text;
+        Font = new Font("Segoe UI", 9.25f);
+        BorderStyle = BorderStyle.FixedSingle;
+        GridLines = false;
+        HeaderStyle = ColumnHeaderStyle.Nonclickable;
+
+        Resize += (_, _) => FitLastColumn();
+    }
+
+    private void FitLastColumn()
+    {
+        if (Columns.Count == 0 || ClientSize.Width <= 100) return;
+        int fixedWidth = 0;
+        for (int i = 0; i < Columns.Count - 1; i++)
+            fixedWidth += Columns[i].Width;
+        int remaining = ClientSize.Width - fixedWidth - 6;
+        if (remaining > 120)
+            Columns[^1].Width = remaining;
+    }
+
+    protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e)
+    {
+        using var bg = new SolidBrush(Theme.HeaderBg);
+        e.Graphics.FillRectangle(bg, e.Bounds);
+        using var borderPen = new Pen(Theme.Border, 1f);
+        e.Graphics.DrawLine(borderPen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+        e.Graphics.DrawLine(borderPen, e.Bounds.Right - 1, e.Bounds.Top + 4, e.Bounds.Right - 1, e.Bounds.Bottom - 5);
+
+        var textRect = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", HeaderFont, textRect,
+            Color.FromArgb(244, 212, 220),
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+    }
+
+    protected override void OnDrawItem(DrawListViewItemEventArgs e)
+    {
+        // Row cells are rendered cleanly per-column inside OnDrawSubItem.
+    }
+
+    protected override void OnDrawSubItem(DrawListViewSubItemEventArgs e)
+    {
+        if (e.Item is null || e.SubItem is null) return;
+        bool selected = e.Item.Selected;
+        Color rowBg = selected
+            ? Theme.SelectionBg
+            : (e.ItemIndex % 2 == 1 ? Theme.InputAltBg : Theme.InputBg);
+
+        using (var bg = new SolidBrush(rowBg))
+            e.Graphics.FillRectangle(bg, e.Bounds);
+
+        using (var linePen = new Pen(Color.FromArgb(38, 22, 28), 1f))
+            e.Graphics.DrawLine(linePen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+
+        if (selected && e.ColumnIndex == 0)
+        {
+            using var barBrush = new SolidBrush(Color.FromArgb(238, 56, 74));
+            e.Graphics.FillRectangle(barBrush, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
+        }
+
+        int textOffsetX = 8;
+        if (e.ColumnIndex == 0 && CheckBoxes)
+        {
+            int boxSize = 14;
+            int boxX = e.Bounds.X + 7;
+            int boxY = e.Bounds.Y + (e.Bounds.Height - boxSize) / 2;
+            var boxRect = new Rectangle(boxX, boxY, boxSize, boxSize);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            if (e.Item.Checked)
+            {
+                using var fill = new SolidBrush(Theme.Blue);
+                using var pen = new Pen(Color.FromArgb(244, 72, 88), 1f);
+                e.Graphics.FillRectangle(fill, boxRect);
+                e.Graphics.DrawRectangle(pen, boxRect);
+                using var checkPen = new Pen(Color.White, 1.8f);
+                e.Graphics.DrawLines(checkPen,
+                [
+                    new Point(boxX + 3, boxY + 7),
+                    new Point(boxX + 6, boxY + 10),
+                    new Point(boxX + 11, boxY + 4)
+                ]);
+            }
+            else
+            {
+                using var fill = new SolidBrush(Theme.Background);
+                using var pen = new Pen(Theme.Border, 1f);
+                e.Graphics.FillRectangle(fill, boxRect);
+                e.Graphics.DrawRectangle(pen, boxRect);
+            }
+            textOffsetX = 28;
+        }
+
+        Color fg = selected ? Color.White : Theme.Text;
+        var textRect = new Rectangle(e.Bounds.X + textOffsetX, e.Bounds.Y, Math.Max(0, e.Bounds.Width - textOffsetX - 6), e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, e.SubItem.Text, Font, textRect, fg,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 }

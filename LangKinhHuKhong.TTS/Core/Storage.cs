@@ -79,6 +79,27 @@ public sealed class Storage
         EnsureActiveFolders();
     }
 
+    private static bool HasAnyVoiceModels(string? folder)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(folder) &&
+                   Directory.Exists(folder) &&
+                   Directory.EnumerateFiles(folder, "*.onnx", SearchOption.AllDirectories).Any();
+        }
+        catch { return false; }
+    }
+
+    private static bool HasValidRuntime(string? folder)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(folder) &&
+                   File.Exists(Path.Combine(folder, "piper", "piper.exe"));
+        }
+        catch { return false; }
+    }
+
     private void NormalizeAppFolders()
     {
         var currentBase = Path.GetFullPath(AppContext.BaseDirectory);
@@ -86,28 +107,44 @@ public sealed class Storage
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "LangKinhHuKhong", "MP3");
         bool baseChanged = !string.Equals(Settings.LastBaseDirectory, currentBase, StringComparison.OrdinalIgnoreCase);
 
-        if (baseChanged || string.IsNullOrWhiteSpace(Settings.OutputFolder) ||
+        bool prevVoicesValid = HasAnyVoiceModels(Settings.VoicesFolder);
+        bool defaultVoicesValid = HasAnyVoiceModels(DefaultVoicesFolder);
+        bool prevRuntimeValid = HasValidRuntime(Settings.RuntimeFolder);
+        bool defaultRuntimeValid = HasValidRuntime(DefaultRuntimeFolder);
+        // Only rebase to currentBase if currentBase actually bundles Runtime/Voices (or previous paths are missing).
+        // Prevents dev/test binaries in empty bin/ folders from overwriting a valid Publish\win-x64 setup!
+        bool canRebaseToCurrent = defaultRuntimeValid || defaultVoicesValid || (!prevRuntimeValid && !prevVoicesValid);
+
+        if ((baseChanged && canRebaseToCurrent) || string.IsNullOrWhiteSpace(Settings.OutputFolder) ||
             string.Equals(Path.GetFullPath(Settings.OutputFolder), Path.GetFullPath(legacyDocsOutput), StringComparison.OrdinalIgnoreCase) ||
             !Directory.Exists(Settings.OutputFolder))
         {
             Settings.OutputFolder = DefaultOutputFolder;
         }
-        if (baseChanged || string.IsNullOrWhiteSpace(Settings.VoicesFolder) || !Directory.Exists(Settings.VoicesFolder))
+        if ((baseChanged && (defaultVoicesValid || !prevVoicesValid)) ||
+            string.IsNullOrWhiteSpace(Settings.VoicesFolder) || !Directory.Exists(Settings.VoicesFolder))
         {
             Settings.VoicesFolder = DefaultVoicesFolder;
         }
-        if (baseChanged || string.IsNullOrWhiteSpace(Settings.RuntimeFolder) || !Directory.Exists(Settings.RuntimeFolder))
+        if ((baseChanged && (defaultRuntimeValid || !prevRuntimeValid)) ||
+            string.IsNullOrWhiteSpace(Settings.RuntimeFolder) || !Directory.Exists(Settings.RuntimeFolder))
         {
             Settings.RuntimeFolder = DefaultRuntimeFolder;
         }
         if (Settings.ReviewWordLimit <= 0) Settings.ReviewWordLimit = 50;
-        Settings.MaxParallelRenders = Math.Clamp(Settings.MaxParallelRenders <= 0 ? 3 : Settings.MaxParallelRenders, 1, 8);
+        if (!Settings.UnlimitedPowerMigrated)
+        {
+            Settings.MaxParallelRenders = 0; // Activate Unlimited Max-Power mode by default
+            Settings.UnlimitedPowerMigrated = true;
+        }
+        if (Settings.MaxParallelRenders < 0) Settings.MaxParallelRenders = 0;
         if (string.IsNullOrWhiteSpace(Settings.SampleText))
         {
             Settings.SampleText =
                 "Xin chào, đây là giọng đọc mẫu của Lăng Kính Hư Không Studio. Âm thanh rõ nét, nhịp nghỉ tự nhiên, tối ưu cho sách nói và truyện dài.";
         }
-        Settings.LastBaseDirectory = currentBase;
+        if (canRebaseToCurrent)
+            Settings.LastBaseDirectory = currentBase;
         SaveSettings();
     }
 

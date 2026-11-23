@@ -14,7 +14,7 @@ public sealed class AudioPipeline
 
     // Always synthesize using the native ONNX/Piper timing. Playback speed is a separate FFmpeg stage.
     public async Task RenderWavAsync(string text, Models.VoiceModel voice, string wav,
-        int? speakerId, CancellationToken ct)
+        int? speakerId, CancellationToken ct, double playbackSpeed = 1.0)
     {
         if (!File.Exists(PiperExe)) throw new FileNotFoundException("Thiếu Runtime/piper/piper.exe (và các DLL đi kèm).", PiperExe);
         ValidateSpeaker(voice, speakerId);
@@ -37,7 +37,10 @@ public sealed class AudioPipeline
             "--sentence_silence", "0.12",
             "--output_file", wav);
         if (speakerId.HasValue) AddArgs(info, "--speaker", speakerId.Value.ToString());
-        var preparedText = SpeechPacing.PrepareTextForPiper(text);
+        var sustainSpec = SpeechPacing.GetTrailingEllipsisSustainSpec(text, playbackSpeed);
+        var (preparedText, usedCarrier) = SpeechPacing.BuildShortUtteranceCarrier(
+            SpeechPacing.PrepareTextForPiper(text),
+            !string.IsNullOrWhiteSpace(syn.Language) ? syn.Language : voice.Language);
         using var process = Process.Start(info) ?? throw new InvalidOperationException("Không chạy được Piper.");
         try
         {
@@ -58,6 +61,10 @@ public sealed class AudioPipeline
             if (writeIssue is not null) throw new InvalidOperationException("Không gửi được văn bản cho Piper.", writeIssue);
             if (!File.Exists(wav) || new FileInfo(wav).Length <= 44)
                 throw new InvalidOperationException($"Giọng {voice.Name} không tạo được WAV. Kiểm tra model ONNX/JSON.");
+            if (usedCarrier)
+                WavPacing.TrimLeadingCarrierSyllableInPlace(wav);
+            if (sustainSpec.IsActive)
+                WavPacing.ElongateFinalSyllableVowelInPlace(wav, sustainSpec.StretchFactor, sustainSpec.MinTargetCoreMs);
         }
         catch { await KillAsync(process); throw; }
     }

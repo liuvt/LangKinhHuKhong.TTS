@@ -17,7 +17,7 @@ public sealed class JobManager
     public async Task<AudioEntry> RenderAsync(string content, VoiceModel voice, double speed,
         int? speakerId, IProgress<(int done, int total)>? progress, CancellationToken ct,
         bool createSrt = true, bool useCuda = false, string? customTitle = null,
-        Func<int>? extraWorkerAllowance = null)
+        ResumableRender.ParallelBudget? budget = null)
     {
         if (string.IsNullOrWhiteSpace(content)) throw new InvalidOperationException("Chưa có văn bản cần đọc.");
 
@@ -28,7 +28,7 @@ public sealed class JobManager
         try
         {
             result = await ResumableRender.RunAsync(content, voice, speakerId, speed, createSrt,
-                useCuda, _storage, _paths, _audio, progress, ct, extraWorkerAllowance);
+                useCuda, _storage, _paths, _audio, progress, ct, budget);
             ct.ThrowIfCancellationRequested();
             File.Copy(result.Mp3, dest, overwrite: false);
             if (createSrt && result.Srt is not null) File.Copy(result.Srt, srtDest, overwrite: false);

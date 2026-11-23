@@ -1,27 +1,31 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
 namespace LangKinhHuKhong.TTS.Core;
 
-/// <summary>One native Piper process for an entire render job, one model load, one JSON line per WAV.</summary>
+/// <summary>One native Piper process for an entire render worker, one model load, one JSON line per WAV.</summary>
 public sealed class PersistentPiperSession : IAsyncDisposable
 {
+    private static readonly ConcurrentDictionary<string, string?> CudaFlagCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Process _process;
     private readonly Task<string> _stderr;
     private readonly uint _sampleRate;
+    private readonly string _language;
     private bool _disposed;
 
     public bool IsCudaActive { get; }
     public bool IsAlive => !_disposed && !_process.HasExited;
 
-    private PersistentPiperSession(Process process, bool isCudaActive, uint sampleRate)
+    private PersistentPiperSession(Process process, bool isCudaActive, uint sampleRate, string language)
     {
         _process = process;
         _stderr = process.StandardError.ReadToEndAsync();
         IsCudaActive = isCudaActive;
         _sampleRate = sampleRate > 0 ? sampleRate : 22050u;
+        _language = language;
     }
 
     public static bool HasCudaProvider(string exe)
@@ -31,7 +35,7 @@ public sealed class PersistentPiperSession : IAsyncDisposable
         return dir is not null && File.Exists(Path.Combine(dir, "onnxruntime_providers_cuda.dll"));
     }
 
-    public sealed record SynthesisParams(uint SampleRate, double NoiseScale, double LengthScale, double NoiseW);
+    public sealed record SynthesisParams(uint SampleRate, double NoiseScale, double LengthScale, double NoiseW, string Language);
 
     public static SynthesisParams ReadSynthesisParams(string configPath)
     {
@@ -39,9 +43,10 @@ public sealed class PersistentPiperSession : IAsyncDisposable
         double noiseScale = 0.42;
         double lengthScale = 1.06;
         double noiseW = 0.45;
+        string language = "";
         try
         {
-            if (!File.Exists(configPath)) return new(sampleRate, noiseScale, lengthScale, noiseW);
+            if (!File.Exists(configPath)) return new(sampleRate, noiseScale, lengthScale, noiseW, language);
             using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
             var root = doc.RootElement;
             if (root.TryGetProperty("audio", out var audio) &&
@@ -50,6 +55,18 @@ public sealed class PersistentPiperSession : IAsyncDisposable
                 sr.TryGetUInt32(out var rate) && rate >= 8000 && rate <= 96000)
             {
                 sampleRate = rate;
+            }
+            if (root.TryGetProperty("espeak", out var esp) && esp.ValueKind == JsonValueKind.Object &&
+                esp.TryGetProperty("voice", out var espVoice) && espVoice.ValueKind == JsonValueKind.String)
+            {
+                language = espVoice.GetString() ?? "";
+            }
+            else if (root.TryGetProperty("language", out var lang))
+            {
+                if (lang.ValueKind == JsonValueKind.Object && lang.TryGetProperty("code", out var c))
+                    language = c.GetString() ?? "";
+                else if (lang.ValueKind == JsonValueKind.String)
+                    language = lang.GetString() ?? "";
             }
             if (root.TryGetProperty("inference", out var inf) && inf.ValueKind == JsonValueKind.Object)
             {
@@ -62,34 +79,37 @@ public sealed class PersistentPiperSession : IAsyncDisposable
             }
         }
         catch { }
-        return new(sampleRate, noiseScale, lengthScale, noiseW);
+        return new(sampleRate, noiseScale, lengthScale, noiseW, language);
     }
 
     public static async Task<PersistentPiperSession> StartAsync(string exe, string model,
-        string config, bool cuda, CancellationToken ct)
+        string config, bool cuda, CancellationToken ct, int intraThreads = 0)
     {
         if (!File.Exists(exe)) throw new FileNotFoundException("Không thấy piper.exe", exe);
         var syn = ReadSynthesisParams(config);
         string? gpuArg = null;
         if (cuda && HasCudaProvider(exe))
         {
-            var help = new ProcessStartInfo(exe)
+            if (!CudaFlagCache.TryGetValue(exe, out gpuArg))
             {
-                WorkingDirectory = Path.GetDirectoryName(exe)!, UseShellExecute = false,
-                CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
-            };
-            help.ArgumentList.Add("--help");
-            using var helpProcess = Process.Start(help) ?? throw new InvalidOperationException("Không kiểm tra được phiên bản Piper.");
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(12));
-            var stdout = helpProcess.StandardOutput.ReadToEndAsync();
-            var stderr = helpProcess.StandardError.ReadToEndAsync();
-            try { await helpProcess.WaitForExitAsync(timeout.Token); }
-            catch { if (!helpProcess.HasExited) helpProcess.Kill(entireProcessTree: true); throw; }
-            var helpText = await stdout + "\n" + await stderr;
-            if (helpText.Contains("--use-cuda", StringComparison.OrdinalIgnoreCase)) gpuArg = "--use-cuda";
-            else if (helpText.Contains("--cuda", StringComparison.OrdinalIgnoreCase)) gpuArg = "--cuda";
-            // If piper.exe does not advertise CUDA flags, fall back cleanly to CPU instead of crashing the render job.
+                var help = new ProcessStartInfo(exe)
+                {
+                    WorkingDirectory = Path.GetDirectoryName(exe)!, UseShellExecute = false,
+                    CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                help.ArgumentList.Add("--help");
+                using var helpProcess = Process.Start(help) ?? throw new InvalidOperationException("Không kiểm tra được phiên bản Piper.");
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(12));
+                var stdout = helpProcess.StandardOutput.ReadToEndAsync();
+                var stderr = helpProcess.StandardError.ReadToEndAsync();
+                try { await helpProcess.WaitForExitAsync(timeout.Token); }
+                catch { if (!helpProcess.HasExited) helpProcess.Kill(entireProcessTree: true); throw; }
+                var helpText = await stdout + "\n" + await stderr;
+                if (helpText.Contains("--use-cuda", StringComparison.OrdinalIgnoreCase)) gpuArg = "--use-cuda";
+                else if (helpText.Contains("--cuda", StringComparison.OrdinalIgnoreCase)) gpuArg = "--cuda";
+                CudaFlagCache[exe] = gpuArg;
+            }
         }
         var info = new ProcessStartInfo(exe)
         {
@@ -98,6 +118,15 @@ public sealed class PersistentPiperSession : IAsyncDisposable
             StandardInputEncoding = new UTF8Encoding(false),
             StandardOutputEncoding = Encoding.UTF8
         };
+        info.Environment["OMP_WAIT_POLICY"] = "PASSIVE";
+        if (intraThreads > 0)
+        {
+            var tStr = intraThreads.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            info.Environment["OMP_NUM_THREADS"] = tStr;
+            info.Environment["MKL_NUM_THREADS"] = tStr;
+            info.Environment["ORT_INTRA_OP_NUM_THREADS"] = tStr;
+            info.Environment["ORT_INTER_OP_NUM_THREADS"] = "1";
+        }
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         foreach (var arg in new[]
         {
@@ -115,7 +144,8 @@ public sealed class PersistentPiperSession : IAsyncDisposable
         }
         if (gpuArg is not null) info.ArgumentList.Add(gpuArg);
         var process = Process.Start(info) ?? throw new InvalidOperationException("Không khởi động được Piper JSON session.");
-        return new PersistentPiperSession(process, gpuArg is not null, syn.SampleRate);
+        try { process.PriorityClass = ProcessPriorityClass.Normal; } catch { }
+        return new PersistentPiperSession(process, gpuArg is not null, syn.SampleRate, syn.Language);
     }
 
     public static void WriteSilentWav(string wavPath, uint sampleRate, int durationMs = 20)
@@ -141,10 +171,11 @@ public sealed class PersistentPiperSession : IAsyncDisposable
         fs.Write(new byte[dataBytes]);
     }
 
-    public async Task SynthesizeAsync(string text, string wav, int? speakerId, CancellationToken ct)
+    public async Task SynthesizeAsync(string text, string wav, int? speakerId, CancellationToken ct, double playbackSpeed = 1.0)
     {
         if (_disposed || _process.HasExited) throw new InvalidOperationException("Phiên Piper đã dừng.");
         if (File.Exists(wav)) File.Delete(wav);
+        var sustainSpec = SpeechPacing.GetTrailingEllipsisSustainSpec(text, playbackSpeed);
         var piperText = SpeechPacing.PrepareTextForPiper(text);
         if (!SpeechPacing.HasPronounceableText(piperText))
         {
@@ -153,9 +184,10 @@ public sealed class PersistentPiperSession : IAsyncDisposable
             return;
         }
 
+        var (textToSynthesize, usedCarrier) = SpeechPacing.BuildShortUtteranceCarrier(piperText, _language);
         var input = speakerId is int id
-            ? new { text = piperText, output_file = wav, speaker_id = (int?)id }
-            : new { text = piperText, output_file = wav, speaker_id = (int?)null };
+            ? new { text = textToSynthesize, output_file = wav, speaker_id = (int?)id }
+            : new { text = textToSynthesize, output_file = wav, speaker_id = (int?)null };
         var json = JsonSerializer.Serialize(input, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
         await _process.StandardInput.WriteLineAsync(json.AsMemory(), ct);
         await _process.StandardInput.FlushAsync(ct);
@@ -189,12 +221,20 @@ public sealed class PersistentPiperSession : IAsyncDisposable
                             WriteSilentWav(wav, _sampleRate, durationMs: 20);
                             len = new FileInfo(wav).Length;
                         }
-                        if (len > 44) { _ = WavPacing.Inspect(wav); return; }
+                        if (len > 44)
+                        {
+                            if (usedCarrier)
+                                WavPacing.TrimLeadingCarrierSyllableInPlace(wav);
+                            if (sustainSpec.IsActive)
+                                WavPacing.ElongateFinalSyllableVowelInPlace(wav, sustainSpec.StretchFactor, sustainSpec.MinTargetCoreMs);
+                            _ = WavPacing.Inspect(wav);
+                            return;
+                        }
                     }
                     catch (IOException) { /* Piper đang đóng file */ }
                     catch (InvalidDataException) { /* File đang được ghi dở */ }
                 }
-                await Task.Delay(15, deadline.Token);
+                await Task.Delay(3, deadline.Token);
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

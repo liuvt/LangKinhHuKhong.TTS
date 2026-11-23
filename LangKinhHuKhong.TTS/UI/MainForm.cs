@@ -27,6 +27,7 @@ public sealed partial class MainForm : Form
     private bool _forceExit;
     private bool _shownTrayHintOnce;
     private string _activePage = "editor";
+    private string _activeSettingsTab = "settings";
 
     // System Tray / Notification Toolbar controls
     private NotifyIcon _trayIcon = null!;
@@ -34,10 +35,14 @@ public sealed partial class MainForm : Form
     private ToolStripMenuItem _trayQueueStatusItem = null!;
     private ToolStripMenuItem _trayCancelAllItem = null!;
 
-    // Layout controls
+    // Layout & Sub-tab controls
     private readonly Panel _pageHost = new() { Dock = DockStyle.Fill, BackColor = Theme.Background };
     private readonly Dictionary<string, Control> _pages = new();
     private readonly Dictionary<string, ModernButton> _navigation = new();
+    private readonly Panel _settingsTabHost = new() { Dock = DockStyle.Fill, BackColor = Theme.Background };
+    private readonly Dictionary<string, Control> _settingsSubPages = new();
+    private readonly Dictionary<string, ModernButton> _settingsTabButtons = new();
+
     private Label _headerTitle = null!;
     private Label _headerSubtitle = null!;
     private ModernButton _headerQueueButton = null!;
@@ -74,13 +79,14 @@ public sealed partial class MainForm : Form
     private ModernProgressBar _voiceLabProgress = null!;
     private Label _renderStatus = null!;
 
-    // Multi-Stream Parallel Render Queue controls
+    // Multi-Stream Parallel Render Queue controls (integrated below Editor & Voice Inspector)
+    private Label _queueSectionTitle = null!;
     private ListView _renderQueueList = null!;
     private ComboBox _queueParallelCombo = null!;
     private Label _queueSummaryLabel = null!;
     private ModernProgressBar _queueOverallProgress = null!;
 
-    // Voice Lab (ElevenLabs style catalog & sample studio)
+    // Voice Catalog (inside Settings & Docs -> "Danh sách giọng")
     private ListView _voiceCatalogList = null!;
     private TextBox _voiceLabSearch = null!;
     private ComboBox _voiceLabCategory = null!;
@@ -112,11 +118,11 @@ public sealed partial class MainForm : Form
         _audio = new AudioPipeline(_paths, _storage);
         _jobs = new JobManager(_storage, _paths, _audio);
         _renderQueue = new RenderQueueManager(_jobs, _storage.Settings.MaxParallelRenders);
-        Text = "LangKinhHuKhong.TTS Studio | v1.4 | Multi-Stream Clarity Workstation";
+        Text = "LangKinhHuKhong.TTS Studio | v1.4 | Crimson Dark Workstation";
         Icon = LoadApplicationIcon();
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1180, 760);
-        Size = new Size(1560, 940);
+        MinimumSize = new Size(1200, 820);
+        Size = new Size(1560, 950);
         BackColor = Theme.Background;
         ForeColor = Theme.Text;
         Font = Theme.Body;
@@ -142,9 +148,18 @@ public sealed partial class MainForm : Form
             _wordTimer.Stop();
             if (!_closing && !_editor.IsDisposed)
             {
-                var words = TextProcessor.CountWords(_editor.Text);
-                var estMinutes = Math.Max(0.1, words / 150.0);
-                _wordCount.Text = $"{words:N0} từ · {_editor.TextLength:N0} ký tự · Ước tính đọc ~{estMinutes:0.#} phút";
+                var snapshot = _editor.Text;
+                var charLen = snapshot.Length;
+                _ = Task.Run(() =>
+                {
+                    var words = TextProcessor.CountWords(snapshot);
+                    var estMinutes = Math.Max(0.1, words / 150.0);
+                    SafeUi(() =>
+                    {
+                        if (_editor.TextLength == charLen)
+                            _wordCount.Text = $"{words:N0} từ · {charLen:N0} ký tự · Ước tính đọc ~{estMinutes:0.#} phút";
+                    });
+                });
             }
         };
         _playTimer.Start();
@@ -173,24 +188,34 @@ public sealed partial class MainForm : Form
 
     private void InitializeSystemTray()
     {
-        _trayMenu = new ContextMenuStrip();
-        var openItem = new ToolStripMenuItem("🗔  Mở Studio Lăng Kính Hư Không") { Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold) };
+        _trayMenu = new ContextMenuStrip
+        {
+            BackColor = Theme.Surface,
+            ForeColor = Theme.Text,
+            Renderer = Theme.CreateMenuRenderer()
+        };
+        var openItem = new ToolStripMenuItem("🗔  Mở Studio Lăng Kính Hư Không")
+        {
+            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+            ForeColor = Theme.Text
+        };
         openItem.Click += (_, _) => RestoreFromSystemTray();
 
-        _trayQueueStatusItem = new ToolStripMenuItem("⚡  Đa luồng Render: Sẵn sàng");
+        _trayQueueStatusItem = new ToolStripMenuItem("⚡  Đa luồng Render: Sẵn sàng") { ForeColor = Theme.Text };
         _trayQueueStatusItem.Click += (_, _) =>
         {
             RestoreFromSystemTray();
-            ShowPage("queue");
+            ShowPage("editor");
+            _renderQueueList?.Focus();
         };
 
-        var openOutputItem = new ToolStripMenuItem("📂  Mở thư mục Output");
+        var openOutputItem = new ToolStripMenuItem("📂  Mở thư mục Nơi lưu (Output)") { ForeColor = Theme.Text };
         openOutputItem.Click += (_, _) => OpenFolder(_storage.Settings.OutputFolder);
 
-        _trayCancelAllItem = new ToolStripMenuItem("■  Hủy tất cả luồng đang render") { Enabled = false };
+        _trayCancelAllItem = new ToolStripMenuItem("■  Hủy tất cả luồng đang render") { Enabled = false, ForeColor = Theme.Text };
         _trayCancelAllItem.Click += (_, _) => _renderQueue.CancelAll();
 
-        var exitItem = new ToolStripMenuItem("✕  Thoát hoàn toàn ứng dụng");
+        var exitItem = new ToolStripMenuItem("✕  Thoát hoàn toàn ứng dụng") { ForeColor = Theme.DangerText };
         exitItem.Click += (_, _) =>
         {
             if (_renderQueue.ActiveCount > 0 && MessageBox.Show(
@@ -268,12 +293,11 @@ public sealed partial class MainForm : Form
         if (e.Control && e.KeyCode == Keys.P) { _ = StartReviewSnippetAsync(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.M) { HideToSystemTray(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.D1) { ShowPage("editor"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D2) { ShowPage("queue"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D3) { ShowPage("voices"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D4) { ShowPage("library"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D5) { ShowPage("merge"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D6) { ShowPage("settings"); e.SuppressKeyPress = true; }
-        if (e.Control && e.KeyCode == Keys.D7) { ShowPage("guide"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D2) { ShowPage("library"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D3) { ShowPage("merge"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D4) { ShowSettingsTab("settings"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D5) { ShowSettingsTab("voices"); e.SuppressKeyPress = true; }
+        if (e.Control && e.KeyCode == Keys.D6) { ShowSettingsTab("guide"); e.SuppressKeyPress = true; }
     }
 
     private void OnClosing(object? sender, FormClosingEventArgs e)

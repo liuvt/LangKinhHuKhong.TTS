@@ -4,7 +4,7 @@ using LangKinhHuKhong.TTS.Core;
 namespace LangKinhHuKhong.TTS.UI;
 
 /// <summary>
-/// Standalone WinForms dialog; attach to the application's existing "Ghép MP3" action.
+/// Standalone WinForms dialog; attach to the application's existing "Ghép Audio" action.
 /// Pair by basename: Chapter01.mp3 + Chapter01.srt, or choose an SRT manually.
 /// </summary>
 public sealed class MergeAudioSrtForm : Form
@@ -15,8 +15,8 @@ public sealed class MergeAudioSrtForm : Form
         Dock = DockStyle.Fill, AutoGenerateColumns = false, AllowUserToAddRows = false,
         AllowUserToDeleteRows = false, MultiSelect = false, RowHeadersVisible = false,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        BackgroundColor = Theme.Inset, AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
-        BorderStyle = BorderStyle.None, GridColor = Theme.Border, EnableHeadersVisualStyles = false,
+        BackgroundColor = Theme.InputBg, AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
+        BorderStyle = BorderStyle.FixedSingle, GridColor = Theme.Border, EnableHeadersVisualStyles = false,
         ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
         CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal
     };
@@ -34,7 +34,7 @@ public sealed class MergeAudioSrtForm : Form
         _ffprobePath = Path.Combine(Path.GetDirectoryName(ffmpegPath) ?? "", "ffprobe.exe");
         _storage = storage;
         if (initialTracks is not null) _tracks.AddRange(initialTracks);
-        Text = "Ghép MP3 + đồng bộ SRT | Lăng Kính Hư Không | v1.1";
+        Text = "Ghép Audio + đồng bộ SRT | Lăng Kính Hư Không | v1.4";
         Size = new Size(1040, 600);
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(860, 500);
@@ -42,20 +42,37 @@ public sealed class MergeAudioSrtForm : Form
         ForeColor = Theme.Text;
         Font = Theme.Body;
 
-        _grid.BackgroundColor = Theme.Inset;
-        _grid.DefaultCellStyle.BackColor = Color.White;
+        _grid.BackgroundColor = Theme.InputBg;
+        _grid.DefaultCellStyle.BackColor = Theme.InputBg;
         _grid.DefaultCellStyle.ForeColor = Theme.Text;
-        _grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 240, 221);
-        _grid.DefaultCellStyle.SelectionForeColor = Theme.Text;
-        _grid.ColumnHeadersDefaultCellStyle.BackColor = Theme.Blue;
-        _grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-        _grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold);
+        _grid.DefaultCellStyle.SelectionBackColor = Theme.SelectionBg;
+        _grid.DefaultCellStyle.SelectionForeColor = Color.White;
+        _grid.AlternatingRowsDefaultCellStyle.BackColor = Theme.InputAltBg;
+        _grid.AlternatingRowsDefaultCellStyle.ForeColor = Theme.Text;
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = Theme.HeaderBg;
+        _grid.ColumnHeadersDefaultCellStyle.ForeColor = Theme.Text;
+        _grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Theme.HeaderBg;
+        _grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = Theme.Text;
+        _grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9.25f, FontStyle.Bold);
         _grid.ColumnHeadersHeight = 38;
         _grid.RowTemplate.Height = 34;
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Mp3", HeaderText = "File MP3 (thứ tự ghép)", ReadOnly = true, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, FillWeight = 48 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Srt", HeaderText = "File SRT đi kèm", ReadOnly = true, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, FillWeight = 43 });
-        var speeds = new DataGridViewComboBoxColumn { Name = "Speed", HeaderText = "Tốc độ", Width = 100, FlatStyle = FlatStyle.Flat };
+        var speeds = new DataGridViewComboBoxColumn
+        {
+            Name = "Speed",
+            HeaderText = "Tốc độ",
+            Width = 100,
+            FlatStyle = FlatStyle.Flat,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                SelectionBackColor = Theme.SelectionBg,
+                SelectionForeColor = Color.White
+            }
+        };
         speeds.Items.AddRange("0.5", "1", "1.25", "1.5", "2");
         _grid.Columns.Add(speeds);
         _grid.CurrentCellDirtyStateChanged += (_, _) =>
@@ -70,13 +87,22 @@ public sealed class MergeAudioSrtForm : Form
                 _tracks[e.RowIndex] = _tracks[e.RowIndex] with { Speed = speed };
         };
 
-        var commands = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 90, Padding = new Padding(10), WrapContents = true, AutoScroll = true, BackColor = Color.Transparent };
+        var commands = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 90, Padding = new Padding(10), WrapContents = true, AutoScroll = true, BackColor = Theme.Surface };
         var add = MakeButton("+ Thêm MP3", ModernButton.Kind.Secondary, (_, _) => AddFiles());
         var setSrt = MakeButton("Chọn SRT", ModernButton.Kind.Secondary, (_, _) => SetSrt());
         var up = MakeButton("↑ Lên", ModernButton.Kind.Ghost, (_, _) => MoveSelected(-1));
         var down = MakeButton("↓ Xuống", ModernButton.Kind.Ghost, (_, _) => MoveSelected(1));
         var remove = MakeButton("Xóa", ModernButton.Kind.Destructive, (_, _) => RemoveSelected());
-        var allSpeed = new ComboBox { Width = 66, DropDownStyle = ComboBoxStyle.DropDownList };
+        var allSpeed = new ComboBox
+        {
+            Width = 72,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Theme.InputBg,
+            ForeColor = Theme.Text,
+            Font = Theme.Body,
+            Margin = new Padding(4, 7, 4, 3)
+        };
         allSpeed.Items.AddRange(new object[] { "0.5", "1", "1.25", "1.5", "2" });
         allSpeed.SelectedItem = "1";
         var applyAll = MakeButton("Tốc độ tất cả", ModernButton.Kind.Gold, (_, _) =>
@@ -90,7 +116,7 @@ public sealed class MergeAudioSrtForm : Form
         _export.Click += async (_, _) => await ExportAsync();
         _cancel.Click += (_, _) => _cts?.Cancel();
 
-        var statusPanel = new Panel { Height = 42, Dock = DockStyle.Bottom, Padding = new Padding(10), BackColor = Color.Transparent };
+        var statusPanel = new Panel { Height = 42, Dock = DockStyle.Bottom, Padding = new Padding(10), BackColor = Theme.Surface };
         statusPanel.Controls.Add(_status);
         Controls.Add(_grid);
         Controls.Add(commands);
@@ -162,7 +188,7 @@ public sealed class MergeAudioSrtForm : Form
                 File.Exists(item.SrtPath) ? item.SrtPath : "[THIẾU SRT] " + item.SrtPath,
                 item.Speed.ToString("0.##", CultureInfo.InvariantCulture));
             if (!File.Exists(item.SrtPath))
-                _grid.Rows[ix].Cells[1].Style.ForeColor = Theme.Danger;
+                _grid.Rows[ix].Cells[1].Style.ForeColor = Theme.DangerText;
         }
         if (_tracks.Count > 0)
         {

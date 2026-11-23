@@ -246,5 +246,115 @@ Check(StreamingPcmEncoder.BuildStudioClarityFilter(1.5).Contains("aresample=4410
       StreamingPcmEncoder.BuildStudioClarityFilter(1.5).Contains("atempo=1.5", StringComparison.Ordinal),
       "Chuỗi lọc 1-pass 32-bit float 44.1kHz Clarity EQ + atempo chống nén MP3 hai lần");
 
+// v1.5 Unlimited Max-Power & 1.5M+ character stress test (verifies >1,196,126-char novel performance & zero caps)
+var megaParagraph = "Lý Đức Chính vội vàng húp mấy miếng cháo nguội, lấy khăn vải dày quấn kín miệng mũi, cầm mảnh giấy viết từ đêm qua, trên đó ghi nguệch ngoạc số người trong từng hộ, rồi nhét túi tiền vào ngực áo. Trong túi có chút công quỹ mà ông được quyền sử dụng với tư cách trưởng thôn, cùng một phần tiền tích cóp của nhà mình. Chuẩn bị xong, ông bước ra cửa.\n";
+var megaBuilder = new StringBuilder(1_600_000);
+while (megaBuilder.Length < 1_500_000) megaBuilder.Append(megaParagraph);
+var megaText = megaBuilder.ToString();
+var sw = System.Diagnostics.Stopwatch.StartNew();
+var megaWords = TextProcessor.CountWords(megaText);
+var megaSnippet = TextProcessor.ExtractReviewSnippet(megaText, 50);
+var megaSegs = SpeechPacing.SegmentText(TextProcessor.NormalizeForTts(megaText));
+sw.Stop();
+Check(megaText.Length >= 1_500_000 && megaWords > 300_000 && megaSnippet.WordCount == 50 && megaSnippet.Truncated && megaSegs.Count > 30_000 && sw.ElapsedMilliseconds < 4000,
+      $"Stress test 1.500.000+ ký tự ({megaWords:N0} từ, {megaSegs.Count:N0} mệnh đề) chạy mượt trong {sw.ElapsedMilliseconds}ms không giới hạn");
+
+// Single-word / 2-word Carrier Warmup + Silence-Valley Trim tests ("Giết!" -> not "Chiết")
+var (gietCarrier, gietApplied) = SpeechPacing.BuildShortUtteranceCarrier("Giết!", "vi");
+var (uCarrier, uApplied) = SpeechPacing.BuildShortUtteranceCarrier("Út.", "vi");
+var (longCarrier, longApplied) = SpeechPacing.BuildShortUtteranceCarrier("Chuẩn bị xong, ông bước ra cửa.", "vi");
+Check(gietApplied && gietCarrier == "Út: Giết!" &&
+      uApplied && uCarrier == "Ất: Út." &&
+      !longApplied && longCarrier == "Chuẩn bị xong, ông bước ra cửa.",
+      "Từ đơn/câu ngắn 1-2 từ ('Giết!', 'Út.') tự thêm âm mồi khép vô thanh ('Út:' / 'Ất:'), câu >=3 từ giữ nguyên");
+
+var carrierWav = Path.Combine(Path.GetTempPath(), "LKH-CarrierTrim-" + Guid.NewGuid().ToString("N") + ".wav");
+try
+{
+    uint sr = 22050;
+    int carrierSamples = (int)(sr * 0.16); // 160ms carrier 'À'
+    int gapSamples = (int)(sr * 0.12);     // 120ms ':' silence valley
+    int targetSamples = (int)(sr * 0.35);  // 350ms target 'Giết!'
+    int totalTestSamples = carrierSamples + gapSamples + targetSamples;
+    using (var fs = File.Create(carrierWav))
+    using (var w = new BinaryWriter(fs, Encoding.ASCII))
+    {
+        w.Write("RIFF"u8); w.Write((uint)(36 + totalTestSamples * 2));
+        w.Write("WAVEfmt "u8); w.Write(16u);
+        w.Write((ushort)1); w.Write((ushort)1); w.Write(sr); w.Write(sr * 2);
+        w.Write((ushort)2); w.Write((ushort)16);
+        w.Write("data"u8); w.Write((uint)(totalTestSamples * 2));
+        for (int i = 0; i < carrierSamples; i++) w.Write((short)8000);
+        for (int i = 0; i < gapSamples; i++) w.Write((short)0);
+        for (int i = 0; i < targetSamples; i++) w.Write((short)12000);
+    }
+    WavPacing.TrimLeadingCarrierSyllableInPlace(carrierWav);
+    var trimmedInfo = WavPacing.Inspect(carrierWav);
+    Check(trimmedInfo.FrameCount >= targetSamples && trimmedInfo.FrameCount < targetSamples + gapSamples,
+          "Cắt bỏ âm mồi 'À:' ngay trong rãnh im lặng trước từ đơn, giữ trọn vẹn 100% âm đầu của từ đích");
+}
+finally { if (File.Exists(carrierWav)) File.Delete(carrierWav); }
+
+// v1.7 Trailing-Ellipsis Vowel Elongation tests ("Giết..." => kéo dài nguyên âm tự nhiên bằng WSOLA, bù tốc độ 1.5x)
+var specGiet1x = SpeechPacing.GetTrailingEllipsisSustainSpec("Giết...", 1.0);
+var specGiet15x = SpeechPacing.GetTrailingEllipsisSustainSpec("Giết...", 1.5);
+var specGiet6Dots = SpeechPacing.GetTrailingEllipsisSustainSpec("Giết......", 1.0);
+var specLong = SpeechPacing.GetTrailingEllipsisSustainSpec("Chuẩn bị xong, ông bước ra cửa...", 1.0);
+Check(specGiet1x.IsActive && Math.Abs(specGiet1x.StretchFactor - 3.6) < 1e-6 && specGiet1x.MinTargetCoreMs == 560 &&
+      specGiet15x.MinTargetCoreMs >= 680 &&
+      specGiet6Dots.MinTargetCoreMs == 760 &&
+      specLong.IsActive && specLong.MinTargetCoreMs == 220 &&
+      !SpeechPacing.GetTrailingEllipsisSustainSpec("Giết!", 1.5).IsActive &&
+      !SpeechPacing.GetTrailingEllipsisSustainSpec("Giết.", 1.5).IsActive,
+      "Nhận diện chuẩn độ ngân nguyên âm cuối cho dấu '...' / '…' ('Giết...' -> >=560ms @1x, >=685ms bù tốc độ @1.5x, 'Giết......' -> 760ms)");
+
+var dramaticEllipsisSegs = SpeechPacing.SegmentText(TextProcessor.NormalizeForTts("Giết... giết sạch!"));
+Check(dramaticEllipsisSegs.Count == 2 &&
+      dramaticEllipsisSegs[0].Text == "Giết..." &&
+      dramaticEllipsisSegs[0].PauseAfterMs == SpeechPacing.EllipsisPauseMs &&
+      dramaticEllipsisSegs[1].Text == "giết sạch!",
+      "Tách riêng từ cảm thán ngắn có dấu ba chấm ('Giết... giết sạch!') để ngân dài âm 'Giết...' trước khi đọc vế sau");
+
+var ellipWav = Path.Combine(Path.GetTempPath(), "LKH-EllipsisWsola-" + Guid.NewGuid().ToString("N") + ".wav");
+try
+{
+    uint sr = 22050;
+    int leadSilence = (int)(sr * 0.02);   // 20ms pre-silence
+    int syllableFrames = (int)(sr * 0.22); // 220ms periodic voiced syllable (180Hz F0)
+    int tailSilence = (int)(sr * 0.12);   // 120ms Piper trailing silence
+    int origFrames = leadSilence + syllableFrames + tailSilence;
+    using (var fs = File.Create(ellipWav))
+    using (var w = new BinaryWriter(fs, Encoding.ASCII))
+    {
+        w.Write("RIFF"u8); w.Write((uint)(36 + origFrames * 2));
+        w.Write("WAVEfmt "u8); w.Write(16u);
+        w.Write((ushort)1); w.Write((ushort)1); w.Write(sr); w.Write(sr * 2);
+        w.Write((ushort)2); w.Write((ushort)16);
+        w.Write("data"u8); w.Write((uint)(origFrames * 2));
+        for (int i = 0; i < leadSilence; i++) w.Write((short)0);
+        for (int i = 0; i < syllableFrames; i++)
+        {
+            double env = i < sr * 0.02 ? i / (sr * 0.02) : (i > syllableFrames - sr * 0.03 ? (syllableFrames - i) / (sr * 0.03) : 1.0);
+            double sig = Math.Sin(2.0 * Math.PI * 180.0 * i / sr) + 0.4 * Math.Sin(2.0 * Math.PI * 360.0 * i / sr);
+            w.Write((short)Math.Clamp((int)Math.Round(env * sig * 9000.0), short.MinValue, short.MaxValue));
+        }
+        for (int i = 0; i < tailSilence; i++) w.Write((short)0);
+    }
+    WavPacing.ElongateFinalSyllableVowelInPlace(ellipWav, specGiet1x.StretchFactor, specGiet1x.MinTargetCoreMs);
+    var stretchedInfo = WavPacing.Inspect(ellipWav);
+    int addedMs = (int)Math.Round((stretchedInfo.FrameCount - origFrames) * 1000.0 / sr);
+    Check(stretchedInfo.FrameCount > origFrames + (int)(sr * 0.35) &&
+          stretchedInfo.SampleRate == sr && stretchedInfo.Channels == 1,
+          $"WSOLA kéo dài mượt hạt nhân nguyên âm cuối (+{addedMs}ms ngân âm cho 'Giết...'), giữ nguyên phụ âm đầu/cuối và chuẩn RIFF PCM");
+}
+finally { if (File.Exists(ellipWav)) File.Delete(ellipWav); }
+
+var unicodeEllipsisCues = TtsSubtitleTimeline.FromMeasured(
+[
+    new TtsSubtitleTimeline.MeasuredSegment("“Giết…”", 18_000, 150),
+    new TtsSubtitleTimeline.MeasuredSegment("Hắn gầm lên!", 15_000, 350)
+], 22050);
+Check(unicodeEllipsisCues.Count == 2 && unicodeEllipsisCues[0].Text == "“Giết…”" && unicodeEllipsisCues[1].Text == "Hắn gầm lên!",
+      "TtsSubtitleTimeline ngắt riêng cue phụ đề kết thúc bằng ký tự '…' Unicode ngay cả khi khoảng nghỉ ngắn");
 
 

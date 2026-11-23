@@ -44,6 +44,7 @@ public sealed class StreamingPcmEncoder : IAsyncDisposable
         string clarityFilter = BuildStudioClarityFilter(outputSpeed);
         foreach (var arg in new[] {
             "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-threads", "1",
             "-f", "s16le", "-ar", rate, "-ac", channels, "-i", "pipe:0",
             "-vn", "-af", clarityFilter,
             "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", destinationMp3 })
