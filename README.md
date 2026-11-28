@@ -32,7 +32,7 @@
 - **Clarity Config v2 & Chống nuốt âm tiếng Việt**:
   - Tự động ánh xạ dấu trọng âm phụ `ˌ` sang trọng âm chính `ˈ` trên bản sao cấu hình runtime (không sửa file `.onnx.json` gốc), giữ trọn thanh điệu các hư từ tiếng Việt (*mà, được, với, của, thì, là...*) và tinh chỉnh thông số VITS (`noise_scale = 0.42`, `noise_w = 0.45`, `length_scale = 1.06`).
   - **Carrier Syllable Warmup**: Tự động mồi âm khép vô thanh (`Út:` / `Ất:`) rồi cắt chính xác tại rãnh im lặng cho câu ngắn 1–2 từ (*"Giết!"*, *"Đánh!"*) để triệt tiêu lỗi biến dạng phụ âm đầu của mô hình VITS.
-  - **WSOLA Vowel Sustain**: Tự động kéo giãn mượt hạt nhân nguyên âm cuối câu có dấu ba chấm (`...` / `…`) bằng thuật toán miền thời gian WSOLA, có bù trừ theo tốc độ phát (`1.25×`, `1.5×`, `2×`).
+  - **YIN + TD-PSOLA Vowel Sustain**: Tự động dò chu kỳ thanh quản cơ bản bằng thuật toán YIN và kéo giãn mượt hạt nhân nguyên âm cuối câu có dấu ba chấm (`...` / `…`) bằng nội suy khóa đỉnh chu kỳ **TD-PSOLA** không bị rè tiếng, có bù trừ theo tốc độ phát (`1.25×`, `1.5×`, `2×`).
 - **Streaming PCM 1-Pass 44.1 kHz (Không giới hạn WAV 4 GB)**:
   - Stream trực tiếp raw PCM 16-bit (`s16le`) vào một tiến trình FFmpeg duy nhất qua chuỗi lọc 32-bit float (`aresample=44100`, `highpass=65Hz`, presence EQ `3.2kHz`, `atempo`, `alimiter`) và mã hóa MP3 `192 kbps` đúng **1 lần**.
 - **Đa luồng Render Song Song & Smart Batch Checkpoint**:
@@ -49,7 +49,7 @@
 
 | Mục điều hướng | Phím tắt | Chức năng chính |
 | :--- | :--- | :--- |
-| **`1. Biên tập (0)`** | `Ctrl + 1` | Màn hình hợp nhất: phía trên gồm **Kịch bản đầu vào** (nhập `.txt`/`.md`, chuẩn hóa, nghe thử giới hạn 25–500 từ `Ctrl+P`) và **Bảng điều khiển giọng đọc**; ngay phía dưới là bảng **Đa luồng Render (0)** quản lý tiến độ trực tiếp (`Ctrl+Enter` đẩy bài mới mà không khóa trình soạn thảo). |
+| **`1. Biên tập (0)`** | `Ctrl + 1` | Màn hình hợp nhất: phía trên gồm **Kịch bản đầu vào** (soạn/dán kịch bản, nghe thử giới hạn 25–500 từ `Ctrl+P`) và **Bảng điều khiển giọng đọc**; ngay phía dưới là bảng **Đa luồng Render (0)** quản lý tiến độ trực tiếp (`Ctrl+Enter` đẩy bài mới mà không khóa trình soạn thảo). |
 | **`2. Nơi lưu`** | `Ctrl + 2` | Quản lý toàn bộ file `.mp3` + `.srt` đã xuất trong thư mục `Output`: tìm kiếm, nghe thử trên thanh Player toàn cục, tải bản sao, đổi tên hiển thị, xóa hoặc chuyển sang ghép chương. |
 | **`3. Ghép Audio`** | `Ctrl + 3` | Sắp xếp thứ tự nhiều chương MP3, kiểm tra cặp file `.srt` đi kèm, chọn tốc độ xuất hoặc mở hộp thoại nâng cao để gán SRT và tốc độ riêng từng chương. |
 | **`4. Cài đặt và tài liệu`** | `Ctrl + 4..6` | Tích hợp 3 tab con: **Cài đặt** (`Ctrl+4`: cấu hình 3 thư mục & chạy ngầm System Tray `Ctrl+M`) · **Danh sách giọng** (`Ctrl+5`: tạo mẫu `Voices/example`, lọc giọng, đổi tên chuẩn hóa `.onnx` + `.onnx.json`) · **Hướng dẫn dùng** (`Ctrl+6`: tra cứu lệnh kịch bản & sao chép DNA cho AI). |
@@ -138,15 +138,14 @@ Các câu lệnh dưới đây được gõ trực tiếp vào văn bản. **Đ�
 > - Hỗ trợ đơn vị `ms` (mili-giây) hoặc `s` (giây), viết dấu chấm hoặc phẩy thập phân đều hợp lệ (VD: `[pause:400ms]`, `[pause:1.2s]`, `[nghi:1,5s]`).
 > - Khi đặt ngay sau dấu chấm câu (VD: `Đêm đã khuya. [pause:800ms]`), phần mềm dùng khoảng nghỉ `800ms` của lệnh thay cho `310ms` mặc định (không cộng dồn thừa).
 
-### Nhóm lệnh Ghi chú ẩn & Lọc Markdown
+### Nhóm lệnh Ghi chú ẩn (Invisible Notes & Comments)
 
 | Câu lệnh / Cú pháp | Ý nghĩa & Tác dụng | Khi nào nên dùng? |
 | :--- | :--- | :--- |
 | `[[Nội dung ghi chú]]` | Bỏ qua hoàn toàn khi đọc TTS và khi xuất SRT. | Ghi chú bối cảnh, cảm xúc nhân vật hoặc đánh dấu vị trí biên tập. |
 | `[note: Nội dung]` | Bỏ qua hoàn toàn (tương đương `[[...]]`). | Ghi chú kỹ thuật (VD: `[note: Đoạn này tốc độ 1.25x]`). |
 | `[ghichu: Nội dung]` | Cú pháp tiếng Việt của `[note: ...]`, bỏ qua hoàn toàn. | Ghi chú tiếng Việt cho người kiểm duyệt kịch bản. |
-| `// Cả dòng ghi chú` | Mọi dòng bắt đầu bằng `//` đều bị bỏ qua. | Dùng làm tiêu đề phân cảnh ẩn hoặc phân tách phần trong file `.txt`. |
-| Markdown (`.md`) | Tự lọc `#`, `>`, `**...**`, `*...*`, `` `...` ``, `[chữ](url)`, khối ```` ``` ```` và kẻ ngang `---`. | Khi nhập trực tiếp tài liệu hoặc chương truyện định dạng `.md`. |
+| `// Cả dòng ghi chú` | Mọi dòng bắt đầu bằng `//` đều bị bỏ qua. | Dùng làm tiêu đề phân cảnh ẩn hoặc phân tách phần trong kịch bản. |
 
 ## 2.3. Thư viện Giọng Tiếng Trung (`Voices/TrungQuoc` - `zh-CN`)
 
@@ -238,7 +237,7 @@ Mô hình **Piper ONNX (VITS Neural TTS)** không dùng thẻ XML SSML mà đi�
 > **CẢNH BÁO QUAN TRỌNG CHO AI**: Tuyệt đối **KHÔNG** viết lặp chữ cái liền nhau kiểu `"điiii"`, `"ơiiii"`, `"khôngggg"` vì bộ từ điển âm vị `eSpeak-ng` sẽ tưởng là từ lạ và đọc đánh vần từng chữ cái.
 
 Để kéo dài / ngân âm cuối mượt mà, hãy dùng 4 kỹ thuật chuẩn sau:
-1. **Dùng dấu ba chấm `...` ở cuối từ/câu cần ngân** (kích hoạt bộ kéo giãn nguyên âm **WSOLA** của phần mềm):
+1. **Dùng dấu ba chấm `...` ở cuối từ/câu cần ngân** (kích hoạt bộ kéo giãn chu kỳ thanh quản **YIN + TD-PSOLA** trong trẻo của phần mềm):
    - *Ví dụ*: `Giết...` / `Đợi ta với...` / `Trời đất ơi... [pause:500ms] Sao lại ra nông nỗi này...`
 2. **Nhân âm bằng gạch nối `-` hoặc tách nhịp bằng `...` (Cho tiếng gọi xa, tiếng thở dài, tiếng cười)**:
    - *Tiếng gọi ngân xa*: `Sư phụ ơi... ơ-i... [pause:600ms]`

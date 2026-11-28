@@ -41,6 +41,7 @@ public static class SpeechPacing
         var input = source.Replace("\r\n", "\n").Replace('\r', '\n');
         var segment = new StringBuilder();
         var consecutiveBreaks = 0;
+        var atLineStart = true;
 
         void Flush(int pause)
         {
@@ -56,9 +57,28 @@ public static class SpeechPacing
             char c = input[i];
             if (c == '\n')
             {
+                atLineStart = true;
                 consecutiveBreaks++;
                 Flush(consecutiveBreaks > 1 ? ParagraphPauseMs : LinePauseMs);
                 continue;
+            }
+
+            // Skip '//' full-line script comments directly without mutating editor text
+            if (atLineStart)
+            {
+                if (c is ' ' or '\t')
+                {
+                    segment.Append(c);
+                    continue;
+                }
+                if (c == '/' && i + 1 < input.Length && input[i + 1] == '/')
+                {
+                    segment.Clear();
+                    while (i < input.Length && input[i] != '\n') i++;
+                    atLineStart = true;
+                    continue;
+                }
+                atLineStart = false;
             }
 
             // Handle inline studio text commands: [pause:500ms], [nghi:1.5s], [break:1000ms], [[ghi chú]]
@@ -112,15 +132,11 @@ public static class SpeechPacing
 
                 if (look < input.Length && char.IsLower(input[look]) && segment.Length < MaxPhraseLength - 30)
                 {
-                    CountWordsAndCjk(segment.ToString().AsSpan(), out int curWords, out int curCjk);
-                    bool isDramaticShortEllipsis = curWords is >= 1 and <= 2 && curCjk <= 3 &&
-                                                   !StartsWithWeakConnector(input.AsSpan(look));
-                    if (!isDramaticShortEllipsis)
-                    {
-                        // Replace mid-sentence '...' or '…' before a lowercase word with ',' so Piper keeps full clause context.
-                        segment[^1] = ',';
-                        continue;
-                    }
+                    // Replace mid-sentence '...' or '…' before a lowercase word (e.g. "Hừm... đang mong chờ quá!",
+                    // "giá như lúc đầu thế này... thì tốt biết mấy") with ',' so Piper keeps full single-clause prosody
+                    // and natural comma breath without isolating 1-word fragments or starting a new utterance mid-clause.
+                    segment[^1] = ',';
+                    continue;
                 }
 
                 for (int k = ellipStart + 1; k <= i; k++)
@@ -307,6 +323,14 @@ public static class SpeechPacing
         @"(?<![\d:])(?<h>[01]?\d|2[0-3]):(?<m>[0-5]\d)(?![\d:])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex VowellessHmInterjection = new(
+        @"(?<![\p{L}\p{N}])(?<h>[Hh])m+(?![\p{L}\p{N}])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex ElongatedHumInterjection = new(
+        @"(?<![\p{L}\p{N}])(?<stem>[Hh]ừ|[Hh]ử|[Ừừ]|[Ửử])m{2,}(?![\p{L}\p{N}])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static bool ContainsVietnameseDiacritics(string value)
     {
         foreach (var ch in value)
@@ -346,6 +370,12 @@ public static class SpeechPacing
         // 2. Strip hyphens/dashes/single-quotes that are NOT between two alphanumeric characters.
         //    Prevents native eSpeak-ng null-dereference crash on patterns like '"-Word', ',-Word', ':-Word'.
         var cleaned = NonCompoundDashOrQuote.Replace(sb.ToString(), " ");
+
+        // 2b. Expand vowelless "Hm" / "Hmm" -> "Hừm" (prevents eSpeak-ng spelling "hát em ờ")
+        //     and collapse repeated trailing 'm' on "Hừmm" / "Ừmm" -> "Hừm" / "Ừm".
+        cleaned = VowellessHmInterjection.Replace(cleaned, m =>
+            char.IsUpper(m.Groups["h"].Value[0]) ? "Hừm" : "hừm");
+        cleaned = ElongatedHumInterjection.Replace(cleaned, "${stem}m");
 
         // 3. Expand HH:MM clock times in Vietnamese text ("10:30" -> "10 giờ 30") so eSpeak-ng (vi)
         //    does not read "10:30" unnaturally as "mười ba mươi". Subtitle .SRT keeps original "10:30".
@@ -399,12 +429,16 @@ public static class SpeechPacing
             char firstLetter = preparedText.FirstOrDefault(char.IsLetter);
             if (isVi)
             {
-                // Voiceless-stop coda ('-t') physically closes the vocal tract to near-zero amplitude before ':',
-                // creating a guaranteed silence valley on ALL VITS models (including fast male voices like lacphi)
-                // with zero voiced formant bleed into initial 'gi-', 'đ-', 'ch-', or open vowels.
-                bool startsWithU = firstLetter != '\0' &&
-                    "uUùÙúÚủỦũŨụỤưƯừỪứỨửỬữỮựỰ".Contains(firstLetter, StringComparison.Ordinal);
-                return ((startsWithU ? "Ất: " : "Út: ") + preparedText, true);
+                // Only oral obstruent onsets (stops/affricates/sibilants like 'gi-', 'đ-', 'c-', 'ch-', 'tr-', 't-', 'b-')
+                // suffer VITS BOS edge collapse ("Giết!" -> "Chiết", "Đánh!" -> "Đấy", "Cút!" -> "Cố").
+                // Glottal/vowel/sonorant interjections ("Hừm.", "Ừm.", "Ừ.", "À.", "Ơi.", "Không.", "Mẹ.", "Này.")
+                // synthesize cleanly on their own and must NOT have a loud carrier prepended.
+                char lowerFirst = char.ToLowerInvariant(firstLetter);
+                bool needsObstruentWarmup = lowerFirst is 'b' or 'c' or 'd' or 'đ' or 'g' or 'k' or 'p' or 'q' or 's' or 't' or 'x';
+                if (!needsObstruentWarmup)
+                    return (preparedText, false);
+
+                return ("Út: " + preparedText, true);
             }
             else
             {
@@ -422,11 +456,10 @@ public static class SpeechPacing
     }
 
     /// <summary>
-    /// Computes both the stretch multiplier and minimum target vocalic-core duration (ms)
-    /// when a segment ends with trailing ellipsis ("Giết...", "Không…", "Sư phụ ơi...", "Giết......").
+    /// Computes buzz-free YIN + TD-PSOLA vocal sustain parameters when a segment ends with trailing ellipsis
+    /// ("Giết...", "Không…", "Sư phụ ơi...", "Đợi ta với...").
     /// Compensates for playbackSpeed &gt; 1.0 (e.g. 1.5x) so sustained vowels still sound clearly elongated
-    /// even after FFmpeg atempo compression, and ensures naturally short checked syllables ('-t', '-p', '-c'
-    /// like "Giết...") reach a full dramatic ~560-760ms vocal hold instead of only adding ~60ms.
+    /// after FFmpeg atempo compression, while capping stretch ratios within the natural glottal-epoch range.
     /// </summary>
     public static EllipsisSustainSpec GetTrailingEllipsisSustainSpec(string? rawText, double playbackSpeed = 1.0)
     {
@@ -448,33 +481,84 @@ public static class SpeechPacing
             idx--;
         }
 
-        if (effectiveDots < 2)
+        if (effectiveDots < 2 || idx < 0)
             return new(1.0, 0);
+
+        ReadOnlySpan<char> body = span[..(idx + 1)];
+        bool isCheckedStop = EndsWithCheckedStopCoda(body);
 
         double speedComp = double.IsFinite(playbackSpeed) && playbackSpeed > 1.0
             ? Math.Sqrt(Math.Min(playbackSpeed, 2.0))
             : 1.0;
 
-        CountWordsAndCjk(span[..(idx + 1)], out int words, out int cjk);
+        CountWordsAndCjk(body, out int words, out int cjk);
         bool isShortDramatic = (words is >= 1 and <= 3 && cjk == 0) || (cjk is >= 1 and <= 4 && words == 0);
         if (isShortDramatic)
         {
-            double baseStretch = effectiveDots >= 5 ? 4.6 : 3.6;
-            int baseCoreMs = effectiveDots >= 5 ? 760 : 560;
-            return new(baseStretch * speedComp, (int)Math.Round(baseCoreMs * speedComp));
+            if (isCheckedStop)
+            {
+                double baseStretch = effectiveDots >= 5 ? 4.2 : 3.4;
+                int baseCoreMs = effectiveDots >= 5 ? 360 : 290;
+                return new(Math.Min(4.6, baseStretch * speedComp), (int)Math.Round(baseCoreMs * speedComp));
+            }
+            else
+            {
+                double baseStretch = effectiveDots >= 5 ? 3.4 : 2.6;
+                int baseCoreMs = effectiveDots >= 5 ? 420 : 330;
+                return new(Math.Min(4.2, baseStretch * speedComp), (int)Math.Round(baseCoreMs * speedComp));
+            }
         }
 
         bool isMediumClause = (words is >= 4 and <= 6 && cjk == 0) || (cjk is >= 5 and <= 10 && words == 0);
         if (isMediumClause)
         {
-            double baseStretch = effectiveDots >= 5 ? 2.8 : 2.2;
-            int baseCoreMs = effectiveDots >= 5 ? 420 : 320;
-            return new(baseStretch * speedComp, (int)Math.Round(baseCoreMs * speedComp));
+            double baseStretch = effectiveDots >= 5 ? 2.2 : 1.75;
+            int baseCoreMs = effectiveDots >= 5 ? 270 : 210;
+            return new(Math.Min(2.8, baseStretch * speedComp), (int)Math.Round(baseCoreMs * speedComp));
         }
 
-        double longStretch = effectiveDots >= 5 ? 2.25 : 1.65;
-        int longCoreMs = effectiveDots >= 5 ? 320 : 220;
-        return new(longStretch * speedComp, (int)Math.Round(longCoreMs * speedComp));
+        double longStretch = isCheckedStop
+            ? (effectiveDots >= 5 ? 1.65 : 1.35)
+            : (effectiveDots >= 5 ? 1.95 : 1.55);
+        int longCoreMs = effectiveDots >= 5 ? 230 : 175;
+        return new(Math.Min(2.4, longStretch * speedComp), (int)Math.Round(longCoreMs * speedComp));
+    }
+
+    private static bool EndsWithCheckedStopCoda(ReadOnlySpan<char> span)
+    {
+        int end = span.Length - 1;
+        while (end >= 0 && !char.IsLetter(span[end]))
+            end--;
+        if (end < 0) return false;
+
+        int start = end;
+        while (start > 0 && char.IsLetter(span[start - 1]))
+            start--;
+
+        var wordNorm = span.Slice(start, end - start + 1).ToString()
+            .ToLowerInvariant()
+            .Replace('đ', 'd')
+            .Normalize(NormalizationForm.FormD);
+
+        Span<char> ascii = stackalloc char[Math.Min(wordNorm.Length, 64)];
+        int len = 0;
+        foreach (var ch in wordNorm)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+                continue;
+            if (len < ascii.Length)
+                ascii[len++] = ch;
+        }
+        if (len == 0) return false;
+
+        ReadOnlySpan<char> clean = ascii[..len];
+        if (clean[^1] is 'p' or 't' or 'c' or 'k' or 'q' or 'x' or 's' or 'f')
+            return true;
+        if (clean.EndsWith("ch", StringComparison.Ordinal) ||
+            clean.EndsWith("sh", StringComparison.Ordinal) ||
+            clean.EndsWith("th", StringComparison.Ordinal))
+            return true;
+        return false;
     }
 
     public static double GetTrailingEllipsisStretchFactor(string? rawText, double playbackSpeed = 1.0)

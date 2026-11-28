@@ -31,23 +31,22 @@ public static class ResumableRender
     {
         if (string.IsNullOrWhiteSpace(content)) throw new InvalidOperationException("Chưa có văn bản cần đọc.");
         if (!AudioPipeline.SupportedSpeeds.Contains(speed)) throw new InvalidOperationException("Tốc độ không được hỗ trợ.");
-        var normalized = TextProcessor.NormalizeForTts(content);
-        var chunks = SpeechPacing.SegmentText(normalized);
+        var chunks = SpeechPacing.SegmentText(content);
         if (chunks.Count == 0) throw new InvalidOperationException("Nội dung không có câu hợp lệ để tạo giọng.");
         var modelInfo = new FileInfo(voice.ModelPath);
         var cfgInfo = new FileInfo(voice.ConfigPath);
-        var voicePrefix = $"v1.8-clarity|{voice.ModelPath}|{modelInfo.Length}|{modelInfo.LastWriteTimeUtc.Ticks}|" +
+        var voicePrefix = $"v1.13-psola|{voice.ModelPath}|{modelInfo.Length}|{modelInfo.LastWriteTimeUtc.Ticks}|" +
             $"{cfgInfo.Length}|{cfgInfo.LastWriteTimeUtc.Ticks}|{speakerId}|{createSrt}|{useCuda}|{speed:0.####}|";
 
         // Incremental hash: avoid allocating another giant copy of the source manuscript.
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(Encoding.UTF8.GetBytes(voicePrefix));
-        for (int pos = 0; pos < normalized.Length;)
+        for (int pos = 0; pos < content.Length;)
         {
-            var count = Math.Min(16_384, normalized.Length - pos);
-            if (count > 1 && pos + count < normalized.Length && char.IsHighSurrogate(normalized[pos + count - 1]))
+            var count = Math.Min(16_384, content.Length - pos);
+            if (count > 1 && pos + count < content.Length && char.IsHighSurrogate(content[pos + count - 1]))
                 count--;
-            hash.AppendData(Encoding.UTF8.GetBytes(normalized, pos, count));
+            hash.AppendData(Encoding.UTF8.GetBytes(content, pos, count));
             pos += count;
         }
         var key = Convert.ToHexString(hash.GetHashAndReset());

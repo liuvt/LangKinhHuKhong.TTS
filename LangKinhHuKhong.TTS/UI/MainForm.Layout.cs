@@ -441,32 +441,17 @@ public sealed partial class MainForm
         editorTop.Controls.Add(_charCount, 1, 0);
         editing.Controls.Add(editorTop, 0, 0);
 
-        var toolbarGrid = Theme.Table(7, 1);
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));  // Import single
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108)); // Batch multi-file render
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 102)); // Normalize
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));  // Limit combo
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 94));  // Review btn
+        var toolbarGrid = Theme.Table(5, 1);
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128)); // Review label
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));  // Limit combo
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112)); // Review btn
         toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // Spacer
-        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));  // Clear
+        toolbarGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 68));  // Clear
 
-        var import = Btn("⊕ Nhập TXT", ModernButton.Kind.Secondary, 92);
-        import.Dock = DockStyle.Fill;
-        import.Margin = new Padding(0, 2, 4, 2);
-        import.Click += (_, _) => ImportText();
-
-        var batchImport = Btn("⚡ Nhiều file", ModernButton.Kind.Primary, 104);
-        batchImport.Dock = DockStyle.Fill;
-        batchImport.Margin = new Padding(0, 2, 4, 2);
-        batchImport.Click += (_, _) => ImportMultipleFilesToQueue();
-
-        var normalize = Btn("✓ Chuẩn hóa", ModernButton.Kind.Secondary, 98);
-        normalize.Dock = DockStyle.Fill;
-        normalize.Margin = new Padding(0, 2, 4, 2);
-        normalize.Click += (_, _) => _editor.Text = TextProcessor.NormalizeForTts(_editor.Text);
+        var reviewLabel = Theme.Label("Nghe thử đoạn ngắn:", 8.5f, true, Theme.Muted);
 
         _reviewLimitCombo = Theme.Combo();
-        _reviewLimitCombo.Margin = new Padding(0, 3, 4, 3);
+        _reviewLimitCombo.Margin = new Padding(0, 3, 6, 3);
         foreach (var limit in new[] { 25, 50, 100, 150, 250, 500 })
             _reviewLimitCombo.Items.Add(new WordLimitOption(limit));
         _reviewLimitCombo.SelectedIndexChanged += (_, _) =>
@@ -480,12 +465,12 @@ public sealed partial class MainForm
             }
         };
 
-        _reviewToolbarButton = Btn("🎧 Nghe thử", ModernButton.Kind.Gold, 90);
+        _reviewToolbarButton = Btn("🎧 Nghe thử", ModernButton.Kind.Gold, 106);
         _reviewToolbarButton.Dock = DockStyle.Fill;
-        _reviewToolbarButton.Margin = new Padding(0, 2, 4, 2);
+        _reviewToolbarButton.Margin = new Padding(0, 2, 6, 2);
         _reviewToolbarButton.Click += async (_, _) => await StartReviewSnippetAsync();
 
-        var clear = Btn("✕ Xóa", ModernButton.Kind.Secondary, 56);
+        var clear = Btn("✕ Xóa", ModernButton.Kind.Secondary, 64);
         clear.Dock = DockStyle.Fill;
         clear.Margin = new Padding(0, 2, 0, 2);
         clear.Click += (_, _) =>
@@ -494,12 +479,10 @@ public sealed partial class MainForm
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) _editor.Clear();
         };
 
-        toolbarGrid.Controls.Add(import, 0, 0);
-        toolbarGrid.Controls.Add(batchImport, 1, 0);
-        toolbarGrid.Controls.Add(normalize, 2, 0);
-        toolbarGrid.Controls.Add(_reviewLimitCombo, 3, 0);
-        toolbarGrid.Controls.Add(_reviewToolbarButton, 4, 0);
-        toolbarGrid.Controls.Add(clear, 6, 0);
+        toolbarGrid.Controls.Add(reviewLabel, 0, 0);
+        toolbarGrid.Controls.Add(_reviewLimitCombo, 1, 0);
+        toolbarGrid.Controls.Add(_reviewToolbarButton, 2, 0);
+        toolbarGrid.Controls.Add(clear, 4, 0);
         editing.Controls.Add(toolbarGrid, 0, 1);
 
         _editor = new RichTextBox
@@ -520,12 +503,6 @@ public sealed partial class MainForm
             Margin = new Padding(0, 4, 0, 4)
         };
         _editor.TextChanged += (_, _) => UpdateCounts();
-        _editor.AllowDrop = true;
-        _editor.DragEnter += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
-        _editor.DragDrop += (_, e) =>
-        {
-            if (e.Data?.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0) ImportTextFile(files[0]);
-        };
         editing.Controls.Add(_editor, 0, 2);
 
         var below = Theme.Table(1, 2);
@@ -533,7 +510,7 @@ public sealed partial class MainForm
         below.RowStyles.Add(new RowStyle(SizeType.Absolute, 19));
         _wordCount = Theme.Label("0 từ", 8.5f, true, Theme.Text);
         below.Controls.Add(_wordCount, 0, 0);
-        _textWarning = Theme.Label("Ctrl+O mở tệp · Ctrl+Enter thêm vào Đa luồng Render bên dưới · Ctrl+M ẩn xuống Toolbar · Ctrl+1..4 chuyển mục", 8f, color: Theme.Muted);
+        _textWarning = Theme.Label("Ctrl+Enter thêm vào Đa luồng Render bên dưới · Ctrl+P nghe thử · Ctrl+M ẩn xuống Toolbar · Ctrl+1..4 chuyển mục", 8f, color: Theme.Muted);
         below.Controls.Add(_textWarning, 0, 1);
         editing.Controls.Add(below, 0, 3);
 
@@ -765,19 +742,18 @@ public sealed partial class MainForm
         _queueOverallProgress = new ModernProgressBar { Dock = DockStyle.Top, Height = 7, Margin = new Padding(0, 2, 0, 3) };
         queueLayout.Controls.Add(_queueOverallProgress, 0, 1);
 
-        var queueActions = Theme.Table(8, 1);
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));  // Label
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 182)); // Parallel combo
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168)); // Batch import files
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118)); // Play finished
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122)); // Cancel selected
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 106)); // Cancel all
-        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126)); // Clear finished
+        var queueActions = Theme.Table(7, 1);
+        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));  // Label
+        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 192)); // Parallel combo
+        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128)); // Play finished
+        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132)); // Cancel selected
+        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114)); // Cancel all
+        queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 136)); // Clear finished
         queueActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var parallelLabel = Theme.Label("Công suất:", 8.5f, true, Theme.Text);
         _queueParallelCombo = Theme.Combo();
-        _queueParallelCombo.Margin = new Padding(0, 2, 6, 2);
+        _queueParallelCombo.Margin = new Padding(0, 2, 8, 2);
         foreach (var n in new[] { 0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 64 })
             _queueParallelCombo.Items.Add(new ParallelOption(n));
         _queueParallelCombo.SelectedIndexChanged += (_, _) =>
@@ -786,24 +762,19 @@ public sealed partial class MainForm
             ApplyParallelConcurrency(opt.Count);
         };
 
-        var addFilesBtn = Btn("⚡ Chọn nhiều file TXT/MD", ModernButton.Kind.Primary);
-        addFilesBtn.Dock = DockStyle.Fill;
-        addFilesBtn.Margin = new Padding(0, 2, 5, 2);
-        addFilesBtn.Click += (_, _) => ImportMultipleFilesToQueue();
-
         var playBtn = Btn("▶ Nghe bản xong", ModernButton.Kind.Gold);
         playBtn.Dock = DockStyle.Fill;
-        playBtn.Margin = new Padding(0, 2, 5, 2);
+        playBtn.Margin = new Padding(0, 2, 6, 2);
         playBtn.Click += (_, _) => PlaySelectedQueueItem();
 
         var cancelOneBtn = Btn("■ Hủy luồng chọn", ModernButton.Kind.Secondary);
         cancelOneBtn.Dock = DockStyle.Fill;
-        cancelOneBtn.Margin = new Padding(0, 2, 5, 2);
+        cancelOneBtn.Margin = new Padding(0, 2, 6, 2);
         cancelOneBtn.Click += (_, _) => CancelSelectedQueueItems();
 
         var cancelAllBtn = Btn("✕ Hủy tất cả", ModernButton.Kind.Destructive);
         cancelAllBtn.Dock = DockStyle.Fill;
-        cancelAllBtn.Margin = new Padding(0, 2, 5, 2);
+        cancelAllBtn.Margin = new Padding(0, 2, 6, 2);
         cancelAllBtn.Click += (_, _) => _renderQueue.CancelAll();
 
         var clearDoneBtn = Btn("♧ Xóa luồng xong", ModernButton.Kind.Secondary);
@@ -813,11 +784,10 @@ public sealed partial class MainForm
 
         queueActions.Controls.Add(parallelLabel, 0, 0);
         queueActions.Controls.Add(_queueParallelCombo, 1, 0);
-        queueActions.Controls.Add(addFilesBtn, 2, 0);
-        queueActions.Controls.Add(playBtn, 3, 0);
-        queueActions.Controls.Add(cancelOneBtn, 4, 0);
-        queueActions.Controls.Add(cancelAllBtn, 5, 0);
-        queueActions.Controls.Add(clearDoneBtn, 6, 0);
+        queueActions.Controls.Add(playBtn, 2, 0);
+        queueActions.Controls.Add(cancelOneBtn, 3, 0);
+        queueActions.Controls.Add(cancelAllBtn, 4, 0);
+        queueActions.Controls.Add(clearDoneBtn, 5, 0);
         queueLayout.Controls.Add(queueActions, 0, 2);
 
         _renderQueueList = NewAudioList(checkBoxes: false);
@@ -1488,75 +1458,53 @@ public sealed partial class MainForm
             "ơi... ơ-i... [pause:700ms]",
             "Ví dụ ngân âm:\n• Tiếng gọi ngân xa: Sư phụ ơi... ơ-i... [pause:600ms]\n• Tiếng vọng láy âm: Tiếng chuông ngân vang... vang mãi... vang mãi... [pause:900ms]"),
 
-        // 3. Cú pháp Markdown (.md)
-        new("3. Cú pháp Markdown (.md)", "# Tiêu đề  /  ## Chương 1  /  > Trích dẫn", "Lọc ký hiệu, giữ lời",
-            "Khi nhập tệp .md, các ký hiệu #, ##, ### và dấu trích dẫn '>' đầu dòng được tự động loại bỏ để Piper không đọc chữ 'thăng' hay 'lớn hơn'.",
-            "## Chương 1: ",
-            "Tự động thêm dấu chấm cuối dòng tiêu đề để tạo nhịp nghỉ chuyển sang nội dung chương."),
-        new("3. Cú pháp Markdown (.md)", "**In đậm** · *In nghiêng* · __Gạch chân__ · `Code ngắn`", "Giữ chữ, bỏ dấu sao/gạch",
-            "Tự động bóc tách ký hiệu định dạng Markdown (** , * , __ , `) và chỉ giữ lại từ ngữ bên trong.",
-            "",
-            "Ví dụ: '**Quan trọng**' → chuẩn hóa thành 'Quan trọng'."),
-        new("3. Cú pháp Markdown (.md)", "[Tên liên kết](https://...)  /  ![Mô tả ảnh](url)", "Chỉ đọc tên, bỏ URL",
-            "Loại bỏ đường dẫn URL trong ngoặc đơn, chỉ giữ lại phần văn bản mô tả trong ngoặc vuông.",
-            "",
-            "Tránh việc TTS đọc nguyên chuỗi địa chỉ web dài dòng."),
-        new("3. Cú pháp Markdown (.md)", "```Khối mã nguồn```  /  --- (Đường kẻ ngang)", "Bỏ qua hoàn toàn",
-            "Các khối code đặt giữa ```...``` và đường kẻ phân cách '---', '***' được tự động loại bỏ khi nhập file Markdown.",
-            "",
-            "Giúp nhập tài liệu kỹ thuật hoặc truyện định dạng Markdown sạch sẽ ngay lập tức."),
-
-        // 4. Quy tắc tên file Voice (.onnx)
-        new("4. Quy tắc tên file Voice (.onnx)", "<ngôn-ngữ>_<nhóm>_<tên>-<chất-lượng>.onnx", "Chuẩn hóa tự động",
+        // 3. Quy tắc tên file Voice (.onnx)
+        new("3. Quy tắc tên file Voice (.onnx)", "<ngôn-ngữ>_<nhóm>_<tên>-<chất-lượng>.onnx", "Chuẩn hóa tự động",
             "Định dạng tên file chuẩn khuyến nghị trong thư mục Voices (luôn đi kèm file .onnx.json cùng tên).",
             "vi-VN_nu_ngochuyen-high",
             "Bạn có thể đổi tên trực tiếp trên giao diện ở mục '4. Cài đặt và tài liệu → Danh sách giọng' → bấm '✎ Đổi tên file & Phân loại'."),
-        new("4. Quy tắc tên file Voice (.onnx)", "Tiền tố nhóm giọng: nu_ / female_  |  nam_ / male_", "Tự phân loại Nữ / Nam",
+        new("3. Quy tắc tên file Voice (.onnx)", "Tiền tố nhóm giọng: nu_ / female_  |  nam_ / male_", "Tự phân loại Nữ / Nam",
             "Tên file bắt đầu bằng 'nu_', 'female_' hoặc nằm trong thư mục con 'Voices/Nu/' được xếp vào nhóm Nữ; 'nam_', 'male_' hoặc 'Voices/Nam/' được xếp vào nhóm Nam.",
             "",
             "Ngoài ra thuộc tính 'display_name', 'category', 'language.code' trong file .onnx.json luôn được ưu tiên cao nhất."),
-        new("4. Quy tắc tên file Voice (.onnx)", "Thư mục Voices/example/<tên-file>.mp3", "Lưu mẫu thử từng giọng",
+        new("3. Quy tắc tên file Voice (.onnx)", "Thư mục Voices/example/<tên-file>.mp3", "Lưu mẫu thử từng giọng",
             "Chứa file âm thanh mẫu của từng giọng được render từ 'Đoạn văn mẫu chung' trong tab Danh sách giọng để nghe thử tức thì (0ms).",
             "",
             "Khi bạn đổi tên file .onnx bằng công cụ trong phần mềm, file .mp3 mẫu trong Voices/example cũng tự động đổi tên theo."),
 
-        // 5. Phím tắt & Thao tác Studio
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + 1  →  Ctrl + 4  (Ctrl + 5 / 6 mở Tab phụ)", "Chuyển mục nhanh",
+        // 4. Phím tắt & Thao tác Studio
+        new("4. Phím tắt & Thao tác Studio", "Ctrl + 1  →  Ctrl + 4  (Ctrl + 5 / 6 mở Tab phụ)", "Chuyển mục nhanh",
             "Chuyển nhanh giữa 4 mục: (1) Biên tập + Đa luồng, (2) Nơi lưu, (3) Ghép Audio, (4) Cài đặt & Tài liệu (Ctrl+5 Danh sách giọng, Ctrl+6 Hướng dẫn).",
             "",
             "Hoạt động ở mọi vị trí trong cửa sổ ứng dụng."),
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + M  (hoặc nút ▾ Ẩn xuống Toolbar)", "Ẩn Taskbar xuống Khay hệ thống",
+        new("4. Phím tắt & Thao tác Studio", "Ctrl + M  (hoặc nút ▾ Ẩn xuống Toolbar)", "Ẩn Taskbar xuống Khay hệ thống",
             "Ẩn hoàn toàn cửa sổ khỏi thanh Taskbar Windows, chỉ hiển thị biểu tượng ở Toolbar (System Tray) và báo thông báo khi render xong.",
             "",
             "Nhấp chuột trái hoặc nhấp đúp vào biểu tượng trên Toolbar để mở lại cửa sổ bất cứ lúc nào."),
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + Enter  /  Nút ⚡ Nhiều file", "Đa luồng Render song song",
-            "Đẩy văn bản hiện tại hoặc hàng loạt file .TXT/.MD xuống bảng Đa luồng Render ngay bên dưới mà không khóa màn hình soạn thảo.",
+        new("4. Phím tắt & Thao tác Studio", "Ctrl + Enter", "Đa luồng Render song song",
+            "Đẩy văn bản hiện tại xuống bảng Đa luồng Render ngay bên dưới mà không khóa màn hình soạn thảo.",
             "",
-            "Hỗ trợ chế độ Tối đa công suất (Không giới hạn) hoặc chọn số luồng cố định; vừa render vừa gõ chương mới mượt mà."),
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + O", "Nhập tệp .TXT / .MD",
-            "Mở hộp thoại chọn tệp văn bản (.txt hoặc .md) và tự động chuẩn hóa dấu câu đưa vào trình biên tập.",
-            "",
-            "Cũng có thể kéo-thả (Drag & Drop) trực tiếp tệp .txt/.md từ Windows Explorer vào ô soạn thảo."),
-        new("5. Phím tắt & Thao tác Studio", "Ctrl + P  (hoặc nút 🎧 Nghe thử)", "Review giới hạn từ",
+            "Hỗ trợ chế độ Tối đa công suất (Không giới hạn) hoặc chọn số luồng cố định; vừa render vừa dán/gõ chương mới mượt mà."),
+        new("4. Phím tắt & Thao tác Studio", "Ctrl + P  (hoặc nút 🎧 Nghe thử)", "Review giới hạn từ",
             "Nghe thử nhanh theo giới hạn số từ đã chọn (25 / 50 / 100 / 150 / 250 / 500 từ). Nếu đang bôi đen văn bản thì ưu tiên đọc đoạn bôi đen.",
             "",
             "Bản nghe thử phát ngay trên thanh Player đáy màn hình và không làm rác thư mục Nơi lưu."),
 
-        // 6. Lệnh CLI / PowerShell
-        new("6. Lệnh CLI / PowerShell", "BUILD-VA-CHAY.cmd", "Đóng gói & Chạy ngay",
+        // 5. Lệnh CLI / PowerShell
+        new("5. Lệnh CLI / PowerShell", "BUILD-VA-CHAY.cmd", "Đóng gói & Chạy ngay",
             "Biên dịch bản Release Single-File vào Publish\\win-x64, tự tạo 3 thư mục Runtime, Voices, Output và mở ứng dụng.",
             "BUILD-VA-CHAY.cmd",
             "Chạy trực tiếp từ Command Prompt hoặc nhấp đúp chuột trong Windows Explorer."),
-        new("6. Lệnh CLI / PowerShell", "powershell -ExecutionPolicy Bypass -File Scripts\\Build-Windows.ps1", "Lệnh Publish chuẩn",
+        new("5. Lệnh CLI / PowerShell", "powershell -ExecutionPolicy Bypass -File Scripts\\Build-Windows.ps1", "Lệnh Publish chuẩn",
             "Đóng gói ứng dụng cho win-x64 (hoặc thêm -Runtime win-arm64), bảo toàn dữ liệu hiện có trong Runtime/Voices/Output.",
             "powershell -ExecutionPolicy Bypass -File Scripts\\Build-Windows.ps1 -Runtime win-x64",
             "Tự động cấu hình settings.json trỏ vào Publish\\win-x64\\Output, Voices và Runtime."),
-        new("6. Lệnh CLI / PowerShell", "Scripts\\Import-Engine-From-Web.ps1 -OldProjectFolder \"<đường_dẫn>\"", "Chép nhanh Runtime & Voices",
+        new("5. Lệnh CLI / PowerShell", "Scripts\\Import-Engine-From-Web.ps1 -OldProjectFolder \"<đường_dẫn>\"", "Chép nhanh Runtime & Voices",
             "Sao chép toàn bộ thư mục Runtime (piper, ffmpeg) và Voices (.onnx, .onnx.json) từ thư mục dự án cũ sang dự án hiện tại.",
             "powershell -ExecutionPolicy Bypass -File Scripts\\Import-Engine-From-Web.ps1 -OldProjectFolder \"D:\\Path\\To\\OldFolder\"",
             "Tiết kiệm thời gian cài đặt thủ công khi nâng cấp phiên bản."),
-        new("6. Lệnh CLI / PowerShell", "dotnet run --project Tests/SubtitleAddon.Tests.csproj", "Chạy kiểm thử tự động",
-            "Thực thi bộ kiểm thử tự động kiểm tra tách câu, chuẩn hóa văn bản, tính toán SRT từ PCM, đổi tên Voice và Review giới hạn từ.",
+        new("5. Lệnh CLI / PowerShell", "dotnet run --project Tests/SubtitleAddon.Tests.csproj", "Chạy kiểm thử tự động",
+            "Thực thi bộ kiểm thử tự động kiểm tra tách câu, câu lệnh kịch bản, tính toán SRT từ PCM, đổi tên Voice và Review giới hạn từ.",
             "dotnet run --project Tests/SubtitleAddon.Tests.csproj",
             "Đảm bảo toàn bộ thuật toán lõi hoạt động chính xác 100%.")
     ];

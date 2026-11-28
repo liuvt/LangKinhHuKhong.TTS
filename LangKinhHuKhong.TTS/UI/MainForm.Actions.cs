@@ -19,99 +19,12 @@ public sealed partial class MainForm
         _wordCount.Text = $"{len:N0} ký tự · đang tính số từ...";
         _wordTimer.Stop();
         _wordTimer.Start();
-        _textWarning.Text = "Ctrl+O mở tệp · Ctrl+Enter thêm vào Đa luồng Render bên dưới · Ctrl+M ẩn xuống Toolbar · Ctrl+1..4 chuyển mục";
+        _textWarning.Text = "Ctrl+Enter thêm vào Đa luồng Render bên dưới · Ctrl+P nghe thử · Ctrl+M ẩn xuống Toolbar · Ctrl+1..4 chuyển mục";
         _textWarning.ForeColor = Theme.Muted;
         bool hasVoiceAndText = _voiceCombo?.SelectedItem is VoiceModel && len > 0;
         if (_renderButton is not null) _renderButton.Enabled = hasVoiceAndText;
         if (_reviewButton is not null) _reviewButton.Enabled = !_busy && hasVoiceAndText;
         if (_reviewToolbarButton is not null) _reviewToolbarButton.Enabled = !_busy && hasVoiceAndText;
-    }
-
-    private void ImportText()
-    {
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Nhập nội dung văn bản để tạo TTS",
-            Filter = "Văn bản (*.txt;*.md)|*.txt;*.md|TXT (*.txt)|*.txt|Markdown (*.md)|*.md",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-        if (dialog.ShowDialog(this) == DialogResult.OK) ImportTextFile(dialog.FileName);
-    }
-
-    private void ImportTextFile(string file)
-    {
-        try
-        {
-            var ext = Path.GetExtension(file).ToLowerInvariant();
-            if (ext is not ".txt" and not ".md")
-                throw new InvalidOperationException("Chỉ hỗ trợ import file .txt hoặc .md.");
-            using var reader = new StreamReader(file, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true);
-            var raw = reader.ReadToEnd();
-            var text = TextProcessor.FromImportedFile(raw, ext == ".md");
-            if (!string.IsNullOrWhiteSpace(_editor.Text))
-            {
-                var confirm = MessageBox.Show("Thay thế văn bản đang nhập bằng nội dung tệp?", "Import",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                if (confirm != DialogResult.Yes) return;
-            }
-            _editor.Text = text;
-            if (_renderTitleInput is not null)
-                _renderTitleInput.Text = Path.GetFileNameWithoutExtension(file);
-            ShowPage("editor");
-            SetStatus($"Đã nhập {Path.GetFileName(file)} ({text.Length:N0} ký tự).", Theme.Green);
-        }
-        catch (Exception ex) { ShowError(ex, "Không thể nhập văn bản."); }
-    }
-
-    private void ImportMultipleFilesToQueue()
-    {
-        if (_voiceCombo.SelectedItem is not VoiceModel voice)
-        {
-            MessageBox.Show("Hãy chọn một model giọng đọc trong Studio trước khi nạp nhiều file chạy song song.",
-                "Chưa chọn giọng đọc", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        var speed = (_speedCombo.SelectedItem as SpeedOption)?.Value ?? 1.0;
-        var speaker = _speakerCombo.SelectedItem is VoiceSpeaker s ? s.Id : (int?)null;
-        bool createSrt = _srtOnRender.Checked;
-        bool useCuda = _engineCombo.SelectedIndex == 1;
-
-        using var dialog = new OpenFileDialog
-        {
-            Title = $"Chọn nhiều tệp .TXT / .MD để Render song song ({_renderQueue.ModeDisplayLabel}) bằng giọng '{voice.Name}'",
-            Filter = "Văn bản (*.txt;*.md)|*.txt;*.md|TXT (*.txt)|*.txt|Markdown (*.md)|*.md",
-            CheckFileExists = true,
-            Multiselect = true
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.FileNames.Length == 0) return;
-
-        int added = 0;
-        foreach (var file in dialog.FileNames)
-        {
-            try
-            {
-                var ext = Path.GetExtension(file).ToLowerInvariant();
-                if (ext is not ".txt" and not ".md") continue;
-                using var reader = new StreamReader(file, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true);
-                var raw = reader.ReadToEnd();
-                var text = TextProcessor.FromImportedFile(raw, ext == ".md");
-                if (string.IsNullOrWhiteSpace(text)) continue;
-                var title = Path.GetFileNameWithoutExtension(file);
-                _renderQueue.Enqueue(text, voice, speed, speaker, createSrt, useCuda, title);
-                added++;
-            }
-            catch (Exception ex)
-            {
-                ShowError(ex, $"Lỗi đọc tệp {Path.GetFileName(file)}");
-            }
-        }
-
-        if (added > 0)
-        {
-            ShowPage("editor");
-            SetStatus($"⚡ Đã nạp {added} tệp vào Đa luồng Render ({_renderQueue.ModeDisplayLabel}).", Theme.Green);
-        }
     }
 
     private void ReloadVoices()

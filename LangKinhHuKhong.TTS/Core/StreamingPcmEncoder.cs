@@ -65,7 +65,7 @@ public sealed class StreamingPcmEncoder : IAsyncDisposable
     {
         if (!AllowedSpeeds.Contains(speed))
             throw new ArgumentOutOfRangeException(nameof(speed), "Tốc độ không được hỗ trợ.");
-        var chain = "aformat=sample_fmts=fltp,aresample=44100,volume=0.88,highpass=f=65,equalizer=f=3200:t=q:w=1.2:g=1.8";
+        var chain = "aformat=sample_fmts=fltp,aresample=44100,volume=0.80,highpass=f=65,equalizer=f=3200:t=q:w=1.2:g=1.2";
         if (Math.Abs(speed - 1.0) > 1e-9)
             chain += "," + BuildAtempoFilter(speed);
         chain += ",alimiter=limit=0.95:level=false";

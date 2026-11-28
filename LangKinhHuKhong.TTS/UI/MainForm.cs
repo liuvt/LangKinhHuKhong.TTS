@@ -288,7 +288,6 @@ public sealed partial class MainForm : Form
 
     private void OnHotkey(object? sender, KeyEventArgs e)
     {
-        if (e.Control && e.KeyCode == Keys.O) { ImportText(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.Enter) { EnqueueCurrentEditorRender(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.P) { _ = StartReviewSnippetAsync(); e.SuppressKeyPress = true; }
         if (e.Control && e.KeyCode == Keys.M) { HideToSystemTray(); e.SuppressKeyPress = true; }
